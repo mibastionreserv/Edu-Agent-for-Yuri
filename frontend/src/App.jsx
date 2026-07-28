@@ -29,8 +29,26 @@ function Toast({ msg }) {
   return <div className="toast" role="status">{msg}</div>;
 }
 function Avatar({ id, mouth, state, size = 180 }) {
+  // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
+  // replaces the drawn SVG automatically, no code change needed per persona.
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const dims = { width: size, height: size * 1.15 };
+  if (!photoFailed) {
+    return (
+      <div
+        className={`avatar-photo ${state === 'listening' ? 'listening' : ''} ${mouth ? 'speaking' : ''}`}
+        style={dims}
+      >
+        <img
+          src={`/content/avatars/${id}.jpg`}
+          alt={id}
+          onError={() => setPhotoFailed(true)}
+        />
+      </div>
+    );
+  }
   return (
-    <div className="avatar-svg" style={{ width: size, height: size * 1.15 }}
+    <div className="avatar-svg" style={dims}
       dangerouslySetInnerHTML={{ __html: avatarSVG(id, { mouth, state, k: `${id}${size}` }) }} />
   );
 }
