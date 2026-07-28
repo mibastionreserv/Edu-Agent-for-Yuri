@@ -172,7 +172,6 @@ function Classroom({
   // decide whether narration still needs to wait (and show the blocking
   // loader) or can start instantly against the already-connected avatar.
   const simliUpRef = useRef(false);
-  const narrationStreamRef = useRef(null);
   const recognitionRef = useRef(null);
   const voiceModeRef = useRef(false);
 
@@ -297,32 +296,14 @@ function Classroom({
   // unlike capturing the whole tab.
   const narrationAudioRef = useRef(null);
 
-  // Routes the narration <audio> element through Web Audio into a live
-  // MediaStreamTrack for Simli. NOT captureStream(): on an element that has
-  // no source loaded yet, captureStream() returns a stream with ZERO audio
-  // tracks (they only appear once media loads) — which made the classroom-
-  // open pre-warm silently fail before any Simli request was even made.
-  // A MediaStreamAudioDestinationNode provides its track immediately; it
-  // just carries silence until the element actually plays something.
-  //
-  // Side benefit: createMediaElementSource() reroutes the element's output
-  // away from the speakers entirely, so the learner only ever hears Simli's
-  // own relayed, lip-synced audio — the double-audio problem cannot happen
-  // by construction. If Simli fails, restoreLocalNarrationAudio() wires the
-  // element back to the speakers.
-  //
-  // Returns a promise resolving true once Simli reports 'live' (resolved
-  // from the onStatusChange callback in the JSX below — start() resolving
-  // only means the client object exists, not that WebRTC is up). Only ever
-  // attempts once per lesson — cached in simliConnectReadyRef.
+  // Live Simli connection state. The heavy lifting (transport, audio
+  // routing, muting local playback) lives in SimliAvatar — see the rewrite
+  // note there. Here we only cache the one connect attempt per lesson and
+  // remember whether it succeeded.
   const simliConnectReadyRef = useRef(null);
   const simliConnectResolveRef = useRef(null);
-  const narrationCtxRef = useRef(null);
-  const narrationSrcRef = useRef(null);
-  // Photo personas (Mira, Daniel fallback): an AnalyserNode on the narration
-  // element drives the mouth overlay from the REAL audio amplitude — the
-  // mouth opens exactly as loudly/quickly as the voice does, instead of the
-  // old fixed 220ms open/close blink. Written straight to a CSS variable on
+  // Photo personas (Mira, Daniel): the mouth overlay is driven by a loudness
+  // envelope decoded from the narration audio, written to a CSS variable on
   // the presenter dock (no React re-renders at 60fps).
   const presenterDockRef = useRef(null);
   // True once the first TTS line for a photo persona has been fetched —
@@ -334,45 +315,21 @@ function Classroom({
   // — silence is unacceptable, but so is flipping between two different
   // voices mid-lesson. One voice, start to finish, whichever one is usable.
   const ttsDownRef = useRef(false);
+
+  // Hands the narration <audio> element to SimliAvatar and resolves once the
+  // avatar is genuinely on screen (or failed). Only ever attempts once per
+  // lesson. The element may have no src yet — that is fine, Simli reads its
+  // samples as they start flowing.
   function ensureLiveAvatarFromElement(el) {
     if (!simliFaceId) return Promise.resolve(false);
     if (simliConnectReadyRef.current) return simliConnectReadyRef.current;
     simliConnectReadyRef.current = new Promise((resolve) => {
       if (simliAttemptedRef.current || !simliRef.current) { resolve(false); return; }
       simliAttemptedRef.current = true;
-      try {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (!Ctx) { resolve(false); return; }
-        const ctx = new Ctx();
-        const srcNode = ctx.createMediaElementSource(el);
-        const destNode = ctx.createMediaStreamDestination();
-        // Deliberately NOT connected to ctx.destination — see above.
-        srcNode.connect(destNode);
-        narrationCtxRef.current = ctx;
-        narrationSrcRef.current = srcNode;
-        narrationStreamRef.current = destNode.stream;
-        const track = destNode.stream.getAudioTracks()[0];
-        if (!track) { resolve(false); return; }
-        simliConnectResolveRef.current = resolve;
-        // <SimliAvatar> is ALWAYS mounted for Simli personas, so start() is
-        // called directly — no setState→remount→effect chain to go wrong.
-        simliRef.current.start(track, simliFaceId);
-      } catch {
-        resolve(false); // Unsupported — narration still plays, without video.
-      }
+      simliConnectResolveRef.current = resolve; // settled from onReady below
+      simliRef.current.start(el);
     });
     return simliConnectReadyRef.current;
-  }
-
-  // If the live avatar can't relay audio (connect failed, or the connection
-  // died mid-lesson), reconnect the narration element to the speakers so the
-  // lesson keeps working with plain audio.
-  function restoreLocalNarrationAudio() {
-    const ctx = narrationCtxRef.current;
-    const src = narrationSrcRef.current;
-    if (!ctx || !src) return;
-    try { src.connect(ctx.destination); } catch { /* already connected */ }
-    ctx.resume().catch(() => {});
   }
 
   // Starts the Tavus connection (once) and returns a promise resolving true
@@ -414,7 +371,7 @@ function Classroom({
         setAvatarConnecting(false);
         if (!ok) {
           setSimliFailed(true);
-          restoreLocalNarrationAudio();
+          el.muted = false;
         }
       });
     } else if (isTavus) {
@@ -604,10 +561,9 @@ function Classroom({
       if (ok) simliUpRef.current = true;
       else {
         setSimliFailed(true);
-        // The element's output was rerouted into Web Audio for Simli; if
-        // Simli isn't relaying audio after all, wire it back to the
-        // speakers or narration would play into silence.
-        restoreLocalNarrationAudio();
+        // Simli mutes the element to avoid double audio; if it isn't
+        // relaying after all, unmute or narration plays into silence.
+        el.muted = false;
       }
       if (myGen !== speechGenRef.current) {
         URL.revokeObjectURL(objectUrl);
@@ -931,18 +887,20 @@ function Classroom({
               {simliFaceId && !simliFailed ? (
                 <SimliAvatar
                   ref={simliRef}
+                  faceId={simliFaceId}
                   size={150}
-                  onStatusChange={(s) => {
-                    if (s === 'live') simliUpRef.current = true;
-                    if (s === 'error') {
-                      simliUpRef.current = false;
+                  onReady={(ok) => {
+                    simliUpRef.current = ok;
+                    if (!ok) {
                       setSimliFailed(true);
-                      // Simli was the only audio route — if it dies (even
-                      // mid-lesson), give the learner their sound back.
-                      restoreLocalNarrationAudio();
+                      // Simli's listenToAudioElement mutes local playback so
+                      // the voice is heard once, via Simli. If Simli isn't
+                      // delivering after all, unmute or the lesson is silent.
+                      const el = narrationAudioRef.current;
+                      if (el) el.muted = false;
                     }
-                    if ((s === 'live' || s === 'error') && simliConnectResolveRef.current) {
-                      simliConnectResolveRef.current(s === 'live');
+                    if (simliConnectResolveRef.current) {
+                      simliConnectResolveRef.current(ok);
                       simliConnectResolveRef.current = null;
                     }
                   }}
