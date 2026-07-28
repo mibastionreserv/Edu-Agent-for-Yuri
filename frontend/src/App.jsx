@@ -371,7 +371,10 @@ function Classroom({
       ]).then((ok) => {
         simliUpRef.current = ok;
         setAvatarConnecting(false);
-        if (!ok) setSimliFailed(true);
+        if (!ok) {
+          setSimliFailed(true);
+          el.muted = false; // see the matching unmute in speakViaServerTts
+        }
       });
     } else if (isTavus) {
       setAvatarConnecting(true);
@@ -490,7 +493,13 @@ function Classroom({
       const ok = await simliPromise;
       if (showOverlay) setAvatarConnecting(false);
       if (ok) simliUpRef.current = true;
-      else setSimliFailed(true);
+      else {
+        setSimliFailed(true);
+        // The element was muted when its stream was captured for Simli; if
+        // Simli isn't relaying audio after all, unmute or narration would
+        // play into silence.
+        el.muted = false;
+      }
       if (myGen !== speechGenRef.current) {
         URL.revokeObjectURL(objectUrl);
         return true;
@@ -643,7 +652,7 @@ function Classroom({
     setThread((t) => [...t, { role: 'learner', text: q, viaVoice }]);
     setQuestion(''); setAsking(true); setThinking(true);
     try {
-      const res = await api.ask({ moduleId, lang, question: q, history, askedByVoice: viaVoice });
+      const res = await api.ask({ moduleId, lang, question: q, history, askedByVoice: viaVoice, avatarId });
       setThinking(false);
       setThread((t) => [...t, {
         role: 'presenter', text: res.answer, topicality: res.topicality, source: res.source, sources: res.sources,

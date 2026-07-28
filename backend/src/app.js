@@ -143,7 +143,7 @@ export function createApp(pool) {
   // --- ask a question (grounded, intelligent; voice-aware for the client) ---
   app.post('/api/ask', requireAuth, async (req, res) => {
     const {
-      moduleId, lang, question, history, askedByVoice,
+      moduleId, lang, question, history, askedByVoice, avatarId,
     } = req.body || {};
     if (!moduleId || typeof question !== 'string' || !question.trim()) {
       return res.status(400).json({ error: 'moduleId and a question are required.' });
@@ -162,7 +162,7 @@ export function createApp(pool) {
       : [];
 
     const result = await getAnswer({
-      question, lang: mod.language, module: mod, history: safeHistory,
+      question, lang: mod.language, module: mod, history: safeHistory, avatarId,
     });
 
     try {
@@ -201,10 +201,14 @@ export function createApp(pool) {
           // over a minute.
           maxSessionLength: 3600,
           maxIdleTime: 900,
-          // The client feeds Simli a live MediaStreamTrack (mic or TTS output)
-          // rather than discrete pre-buffered chunks, so silence handling is
-          // disabled per Simli's guidance for listenToMediastreamTrack().
-          handleSilence: false,
+          // MUST be true: the avatar is connected from classroom open but no
+          // audio flows until the learner presses Play (and between lines).
+          // With handleSilence:false Simli renders NO frames during silence —
+          // the learner saw a black rectangle instead of the avatar. With
+          // true, Simli generates its own native idle animation (breathing,
+          // blinking) whenever the input track is silent, and switches to
+          // real lip-sync as soon as narration audio flows.
+          handleSilence: true,
         }),
       });
       const data = await simliRes.json();

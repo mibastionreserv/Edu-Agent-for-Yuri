@@ -36,8 +36,12 @@ const SimliAvatar = forwardRef(function SimliAvatar({ size = 170, onStatusChange
       setStatus('connecting');
       setError('');
       try {
-        const { session_token: sessionToken } = await api.simliToken(faceId);
-        const iceServers = await api.simliIce().then((r) => r.iceServers).catch(() => null);
+        // Token and ICE fetches are independent — running them in parallel
+        // shaves ~1s off every connect (they used to run sequentially).
+        const [{ session_token: sessionToken }, iceServers] = await Promise.all([
+          api.simliToken(faceId),
+          api.simliIce().then((r) => r.iceServers).catch(() => null),
+        ]);
         const client = new SimliClient(
           sessionToken,
           videoRef.current,
