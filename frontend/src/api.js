@@ -58,7 +58,14 @@ export async function fetchTtsAudio(text, voice) {
     headers,
     body: JSON.stringify({ text, voice }),
   });
-  if (!res.ok) throw new Error('tts failed');
+  // Include the status so callers can distinguish a quota rejection (429,
+  // surfaced by the backend as a 502 with detail "TTS 429") from a transient
+  // flake — retrying the former only burns more quota.
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.clone().json()).detail || ''; } catch { /* not JSON */ }
+    throw new Error(`tts failed ${res.status}${detail ? ` ${detail}` : ''}`);
+  }
   return res.blob();
 }
 

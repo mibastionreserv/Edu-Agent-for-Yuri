@@ -515,7 +515,16 @@ function Classroom({
     let blob = null;
     try {
       blob = await fetchTtsAudio(text, 'Gacrux');
-    } catch {
+    } catch (firstErr) {
+      // Quota rejection (429): retrying is actively harmful — it burns more
+      // of the quota we just ran out of. Give up immediately so the session
+      // latches onto the fallback voice.
+      if (String((firstErr && firstErr.message) || '').includes('429')) {
+        photoTtsWarmedRef.current = true;
+        if (showOverlay) setAvatarConnecting(false);
+        if (presenterDockRef.current) presenterDockRef.current.removeAttribute('data-lipsync');
+        return false;
+      }
       // One client-side retry on top of the server's own retries: falling
       // back to Web Speech means the live avatar cannot lip-sync at all
       // (its track only carries this element's audio), so a second attempt
