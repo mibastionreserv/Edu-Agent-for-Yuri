@@ -23,8 +23,13 @@ export async function getAnswer({ question, lang, module, history = [], avatarId
   const key = process.env.LLM_API_KEY;
   const model = process.env.LLM_MODEL || 'gpt-4o-mini';
 
-  // Keep the off-topic gate deterministic; only enrich on-topic answers.
-  if (!base || !key || local.topicality === 'off') return { ...local, provider: 'local' };
+  // When an LLM is configured it handles EVERY turn, including ones the
+  // local keyword gate would call "off-topic". The old hard gate trapped
+  // conversational turns ("may I interrupt you?", "yes, please continue")
+  // in the same canned off-topic reply forever — the learner kept saying
+  // "yes please" and kept getting "that's outside our topic". The local
+  // engine remains the fallback when no LLM is configured or the call fails.
+  if (!base || !key) return { ...local, provider: 'local' };
 
   try {
     const context = chunks.map((c) => `## ${c.title}\n${c.text}`).join('\n\n');
@@ -33,9 +38,11 @@ export async function getAnswer({ question, lang, module, history = [], avatarId
     const sys = [
       `You are ${personaName}, an intelligent, friendly Scrum trainer, in the middle of teaching the lesson "${module.title || ''}". A learner just interrupted to ask a question. Answer in ${langName}.`,
       'You have ALREADY greeted this learner at the start of the lesson. Never greet again, never say hello, and never introduce yourself or state your name.',
-      'Open with one short, natural acknowledgment of the question — e.g. "Thank you for the question." — varied to fit how closely the question relates to the topic you are currently teaching (very relevant: appreciate that it is right on topic; loosely related: note it touches a nearby idea; tangential: gently note it goes a bit beyond today\'s topic). Then go straight into the answer.',
-      'Use ONLY the course material below. You may explain, rephrase, give a short example, or compare concepts, but never add facts that are not supported by the material.',
-      'If the material does not cover the question, say it is beyond this part of the course. Keep it concise and conversational.',
+      'First decide what kind of turn this is:',
+      '(a) A conversational/control phrase rather than a content question — e.g. "may I interrupt you?", "yes", "no", "please continue", "go on", "thank you", "can you repeat that?", "slower please". Respond naturally and VERY briefly like a real teacher mid-conversation ("Of course — what would you like to ask?", "Great — let\'s pick up where we left off.", "You\'re welcome!"). No thank-you opener, no lecture.',
+      '(b) A content question about the course: open with one short, natural acknowledgment — e.g. "Thank you for the question." — varied to fit how closely it relates to the topic you are currently teaching (very relevant: appreciate that it is right on topic; loosely related: note it touches a nearby idea; tangential: gently note it goes a bit beyond today\'s topic). Then go straight into the answer.',
+      '(c) A content question with no support in the course material: briefly and kindly say it is beyond this part of the course and invite a question on the current topic. Do not repeat this same sentence verbatim across turns — vary the wording, and use the conversation history to react to what was already said.',
+      'For content answers use ONLY the course material below. You may explain, rephrase, give a short example, or compare concepts, but never add facts that are not supported by the material. Keep it concise and conversational.',
       '\n--- COURSE MATERIAL ---\n', context,
     ].join(' ');
     const msgs = [
