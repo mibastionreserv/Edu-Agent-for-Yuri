@@ -55,12 +55,12 @@ const TAVUS_PERSONAS = { amara: true };
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
   // replaces the drawn SVG automatically, no code change needed per persona.
-  // This is always the default view — including for personas with a live
-  // Simli face (SIMLI_FACES): the CSS mouth/bob animation below is what
-  // actually moves reliably in sync with speech. Classroom only swaps to the
-  // live SimliAvatar video once it has captured real audio to feed it (see
-  // ensureLiveAvatar) — a Simli video with no live audio track goes idle and
-  // eventually blacks out, so it's never worth showing without a real source.
+  // Used on the picker page for everyone, and in the classroom ONLY for
+  // personas without a live-avatar provider. Live-avatar personas
+  // (SIMLI_FACES / TAVUS_PERSONAS) never show this in the classroom — the
+  // service-rendered video, connected as soon as the classroom opens, is the
+  // only presenter rendering there (SRS FR-AV-5: no static stand-ins, no CSS
+  // pseudo-animation).
   const [photoFailed, setPhotoFailed] = useState(false);
   const dims = { width: size, height: size * 1.15 };
   const lm = PHOTO_LANDMARKS[id];
@@ -167,6 +167,10 @@ function Classroom({
   const simliFaceId = SIMLI_FACES[avatarId];
   const simliRef = useRef(null);
   const simliAttemptedRef = useRef(false);
+  // True once the Simli connection has actually reported 'live' — used to
+  // decide whether narration still needs to wait (and show the blocking
+  // loader) or can start instantly against the already-connected avatar.
+  const simliUpRef = useRef(false);
   const narrationStreamRef = useRef(null);
   const recognitionRef = useRef(null);
   const voiceModeRef = useRef(false);
@@ -384,6 +388,34 @@ function Classroom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tavusLive]);
 
+  // Pre-warm the live avatar the moment the classroom opens (SRS FR-FLOW-0 /
+  // FR-AV-5/8): the connection cost is paid once, up front, behind the
+  // blocking loader — so when narration actually starts there is no avatar
+  // delay at all, and the learner only ever sees the service-rendered live
+  // video, never a static stand-in. Applies to both providers.
+  useEffect(() => {
+    if (simliFaceId) {
+      const el = narrationAudioRef.current;
+      if (!el) return;
+      setAvatarConnecting(true);
+      Promise.race([
+        ensureLiveAvatarFromElement(el),
+        new Promise((resolve) => { setTimeout(() => resolve(false), 15000); }),
+      ]).then((ok) => {
+        simliUpRef.current = ok;
+        setAvatarConnecting(false);
+        if (!ok) setSimliFailed(true);
+      });
+    } else if (isTavus) {
+      setAvatarConnecting(true);
+      ensureTavusAvatar().then((ok) => {
+        setAvatarConnecting(false);
+        if (!ok) setTavusFailed(true);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Broadcasts narration text to the live Tavus avatar and waits for Tavus's
   // own conversation.stopped_speaking event before resolving — that's the
   // real end of speech (Tavus does its own TTS + lip-synced video), not a
@@ -452,9 +484,13 @@ function Classroom({
     const el = narrationAudioRef.current;
     if (!el) return false;
 
-    const isFirstAttempt = Boolean(simliFaceId) && !simliConnectReadyRef.current;
-    if (isFirstAttempt) setAvatarConnecting(true);
-    const simliPromise = isFirstAttempt
+    // The connection itself is normally already up — it's pre-warmed on
+    // classroom mount (see the effect above). Awaiting the cached promise is
+    // then instant; the overlay only appears in the rare case the pre-warm
+    // hasn't finished (or was skipped) by the time narration starts.
+    const showOverlay = Boolean(simliFaceId) && !simliUpRef.current;
+    if (showOverlay) setAvatarConnecting(true);
+    const simliPromise = simliFaceId
       ? Promise.race([
           ensureLiveAvatarFromElement(el),
           new Promise((resolve) => { setTimeout(() => resolve(false), 10000); }),
@@ -466,7 +502,7 @@ function Classroom({
       const blob = await fetchTtsAudio(text, 'Gacrux');
       objectUrl = URL.createObjectURL(blob);
     } catch {
-      if (isFirstAttempt) setAvatarConnecting(false);
+      if (showOverlay) setAvatarConnecting(false);
       return false; // TTS unavailable this time — Web Speech API takes over
     }
 
@@ -476,17 +512,18 @@ function Classroom({
     // Report "handled" so the caller does NOT additionally fall back to Web
     // Speech for a line nobody is waiting on anymore.
     if (myGen !== speechGenRef.current) {
-      if (isFirstAttempt) setAvatarConnecting(false);
+      if (showOverlay) setAvatarConnecting(false);
       URL.revokeObjectURL(objectUrl);
       return true;
     }
 
     el.src = objectUrl;
 
-    if (isFirstAttempt) {
+    if (simliPromise) {
       const ok = await simliPromise;
-      setAvatarConnecting(false);
-      if (!ok) setSimliFailed(true);
+      if (showOverlay) setAvatarConnecting(false);
+      if (ok) simliUpRef.current = true;
+      else setSimliFailed(true);
       if (myGen !== speechGenRef.current) {
         URL.revokeObjectURL(objectUrl);
         return true;
@@ -728,6 +765,49 @@ function Classroom({
                 </div>
               )}
             </div>
+
+            {/* Presenter dock: bottom-right of the lesson area, left of the
+                Q&A pane and directly above the Raise hand button, sharing its
+                exact width (--presenter-w, SRS §UI). For live-avatar personas
+                the video here is the ONLY rendering — all animation comes
+                from the avatar service itself, never a photo or CSS mouth. */}
+            <div className="presenter-dock">
+              {simliFaceId ? (
+                <SimliAvatar
+                  ref={simliRef}
+                  size={150}
+                  onStatusChange={(s) => {
+                    if (s === 'live') simliUpRef.current = true;
+                    if (s === 'error') { simliUpRef.current = false; setSimliFailed(true); }
+                    if ((s === 'live' || s === 'error') && simliConnectResolveRef.current) {
+                      simliConnectResolveRef.current(s === 'live');
+                      simliConnectResolveRef.current = null;
+                    }
+                  }}
+                />
+              ) : isTavus && tavusLive && !tavusFailed ? (
+                <TavusAvatar
+                  ref={tavusRef}
+                  size={150}
+                  onStatusChange={(s) => { if (s === 'error') setTavusFailed(true); }}
+                  onStoppedSpeaking={() => {
+                    if (tavusStoppedResolveRef.current) {
+                      tavusStoppedResolveRef.current();
+                      tavusStoppedResolveRef.current = null;
+                    }
+                  }}
+                />
+              ) : (
+                <Avatar id={avatarId} mouth={mouth} state={avatarState} size={150} />
+              )}
+              <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
+                {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
+              </div>
+              {/* Hidden player for server-synthesized speech (Simli personas
+                  only) — never shown, its captureStream() is what feeds the
+                  live avatar; see ensureLiveAvatarFromElement. */}
+              {simliFaceId && <audio ref={narrationAudioRef} style={{ display: 'none' }} />}
+            </div>
           </div>
 
           <div className="controls">
@@ -749,46 +829,6 @@ function Classroom({
           onDoubleClick={() => persistWidth(QA_DEFAULT)}><span className="grip" /></div>
 
         <aside className="right-pane" style={{ width: qaWidth }}>
-          {/* Avatar sits right next to the Q&A panel it's answering into
-              (SRS §UI) — the whiteboard/stage area is dedicated to the
-              lesson content, not the presenter. */}
-          <div className="presenter presenter-inline">
-            {simliFaceId && liveNarration && !simliFailed ? (
-              <SimliAvatar
-                ref={simliRef}
-                size={72}
-                onStatusChange={(s) => {
-                  if (s === 'error') setSimliFailed(true);
-                  if ((s === 'live' || s === 'error') && simliConnectResolveRef.current) {
-                    simliConnectResolveRef.current(s === 'live');
-                    simliConnectResolveRef.current = null;
-                  }
-                }}
-              />
-            ) : isTavus && tavusLive && !tavusFailed ? (
-              <TavusAvatar
-                ref={tavusRef}
-                size={72}
-                onStatusChange={(s) => { if (s === 'error') setTavusFailed(true); }}
-                onStoppedSpeaking={() => {
-                  if (tavusStoppedResolveRef.current) {
-                    tavusStoppedResolveRef.current();
-                    tavusStoppedResolveRef.current = null;
-                  }
-                }}
-              />
-            ) : (
-              <Avatar id={avatarId} mouth={mouth} state={avatarState} size={72} />
-            )}
-            <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
-              {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
-            </div>
-            {/* Hidden player for server-synthesized speech (Simli personas
-                only) — never shown, its captureStream() is what feeds the
-                live avatar; see ensureLiveAvatarFromElement. */}
-            {simliFaceId && <audio ref={narrationAudioRef} style={{ display: 'none' }} />}
-          </div>
-
           <div className="qa-head">
             <b>💬 {ui.qaTitle}</b>
             <div className="qa-tools">
@@ -910,7 +950,13 @@ function CourseApp({ user, onLogout }) {
 
       {view === 'avatars' && (
         <section className="sel">
-          <h2>{ui.choosePresenter}</h2>
+          {/* Header row spans exactly the cards' width: the heading sits
+              flush with the first card's left edge, Continue with the last
+              card's right edge. */}
+          <div className="sel-head">
+            <h2>{ui.choosePresenter}</h2>
+            <button className="primary" onClick={() => setView('modules')}>{ui.continue}</button>
+          </div>
           <div className="cards">
             {course.avatars.map((a) => (
               <button key={a.id} className={`acard ${avatarId === a.id ? 'sel' : ''}`} onClick={() => setAvatarId(a.id)}>
@@ -921,7 +967,6 @@ function CourseApp({ user, onLogout }) {
               </button>
             ))}
           </div>
-          <button className="primary" onClick={() => setView('modules')}>{ui.continue}</button>
         </section>
       )}
 

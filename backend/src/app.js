@@ -193,8 +193,14 @@ export function createApp(pool) {
           faceId,
           apiVersion: 'v2',
           audioInputFormat: 'pcm16',
-          maxSessionLength: 600,
-          maxIdleTime: 60,
+          // The avatar is now connected for the whole lesson (pre-warmed on
+          // classroom open, SRS FR-AV-5), so the session must comfortably
+          // outlive a full module (~10-12 min) plus Q&A pauses. The old
+          // 600s/60s limits made Simli kill the session mid-lesson — the
+          // avatar froze or silently died the moment the learner paused for
+          // over a minute.
+          maxSessionLength: 3600,
+          maxIdleTime: 900,
           // The client feeds Simli a live MediaStreamTrack (mic or TTS output)
           // rather than discrete pre-buffered chunks, so silence handling is
           // disabled per Simli's guidance for listenToMediastreamTrack().

@@ -58,6 +58,12 @@ input{font-family:inherit}
 /* selection screens */
 .sel{padding:34px 30px;text-align:center}
 .sel h2{font-size:24px;margin:0 0 24px}
+/* Presenter picker header: exactly as wide as the cards grid below, so the
+   heading lines up with the first card's left edge and Continue with the
+   last card's right edge. */
+.sel-head{display:flex;justify-content:space-between;align-items:center;gap:16px;
+  max-width:940px;margin:0 auto 24px;text-align:left}
+.sel-head h2{margin:0}
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:800px;margin:0 auto 26px}
 .acard{background:#1c2c39;border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;align-items:center;gap:4px;color:#fff}
 .acard.sel{border-color:var(--yellow);box-shadow:0 0 0 3px rgba(255,203,71,.2)}
@@ -82,13 +88,16 @@ input{font-family:inherit}
 .topbar{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;padding:13px 18px;border-bottom:1px solid var(--line)}
 .crumb{display:flex;gap:10px;align-items:center;font-size:14px}
 .crumb .mod{color:var(--yellow);font-family:monospace}
-/* The stage now only holds the whiteboard — the presenter lives in the
-   right-pane, next to Q&A (see .presenter-inline below). */
+/* The stage holds the whiteboard plus the presenter dock on its right —
+   the dock sits left of the Q&A pane, bottom-aligned so the avatar lands
+   directly above the Raise hand button in the controls bar below, and both
+   share the same width (--presenter-w). */
+:root{--presenter-w:150px}
 .stage{display:flex;min-height:360px}
 .presenter{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:18px;overflow:hidden}
-/* Compact horizontal presenter block docked above the Q&A panel. */
-.presenter-inline{flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);flex:0 0 auto}
-.presenter-inline .badge{margin-top:0}
+.presenter-dock{flex:0 0 auto;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;
+  gap:8px;padding:0 18px 10px 0;width:calc(var(--presenter-w) + 18px)}
+.presenter-dock .badge{margin-top:0;max-width:var(--presenter-w);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .badge{margin-top:8px;font-size:12px;font-family:monospace;color:var(--muted-2);background:rgba(255,255,255,.06);padding:6px 12px;border-radius:20px}
 .badge.on{color:#8ff0e4;background:rgba(23,183,166,.16);border:1px solid rgba(23,183,166,.4)}
 .board-col{flex:1;padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
@@ -113,7 +122,8 @@ input{font-family:inherit}
 .progress span{font-family:monospace;font-size:12px;color:var(--muted-2)}
 .track{flex:1;height:6px;background:rgba(255,255,255,.09);border-radius:6px;overflow:hidden}
 .track i{display:block;height:100%;background:var(--yellow)}
-.raise{display:inline-flex;align-items:center;gap:8px;background:var(--yellow);color:var(--slate-2);border:0;font-weight:600;padding:11px 18px;border-radius:11px;font-size:14px}
+.raise{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--yellow);color:var(--slate-2);border:0;font-weight:600;padding:11px 12px;border-radius:11px;font-size:14px;
+  width:var(--presenter-w)/* same width as the presenter dock above it */}
 .raise.lit{background:var(--coral);color:#fff;box-shadow:0 0 0 5px rgba(255,106,85,.25)}
 
 /* resizable split: presenter pane (left) + Q&A strip (right) */
