@@ -19,10 +19,14 @@ const SimliAvatar = forwardRef(function SimliAvatar({ size = 170, onStatusChange
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const clientRef = useRef(null);
+  const frameWatchRef = useRef(null);
+  const cleanupVideoListenersRef = useRef(null);
   const [status, setStatus] = useState('idle'); // idle | connecting | live | error
   const [error, setError] = useState('');
 
   useEffect(() => () => {
+    if (frameWatchRef.current) { clearInterval(frameWatchRef.current); frameWatchRef.current = null; }
+    if (cleanupVideoListenersRef.current) { cleanupVideoListenersRef.current(); cleanupVideoListenersRef.current = null; }
     if (clientRef.current) { clientRef.current.stop(); clientRef.current = null; }
   }, []);
 
@@ -53,6 +57,41 @@ const SimliAvatar = forwardRef(function SimliAvatar({ size = 170, onStatusChange
         client.on('start', () => setStatus('live'));
         client.on('error', () => { setStatus('error'); setError('Connection lost.'); });
         client.on('startup_error', (msg) => { setStatus('error'); setError(String(msg || 'Could not start.')); });
+
+        // Ground truth is PIXELS ON SCREEN, not the SDK's 'start' event —
+        // observed on production: real video frames were flowing (512x512,
+        // readyState 4, currentTime advancing) while 'start' never fired, so
+        // the opaque "Connecting…" overlay stayed up and hid the avatar
+        // completely. Watch the element itself and go live the moment it has
+        // actual dimensions.
+        const vid = videoRef.current;
+        if (vid) {
+          const markLive = () => { if (vid.videoWidth > 0) setStatus('live'); };
+          vid.addEventListener('loadeddata', markLive);
+          vid.addEventListener('playing', markLive);
+          vid.addEventListener('resize', markLive);
+          let waited = 0;
+          frameWatchRef.current = setInterval(() => {
+            waited += 250;
+            if (vid.videoWidth > 0 && vid.readyState >= 2) {
+              setStatus('live');
+              clearInterval(frameWatchRef.current);
+              frameWatchRef.current = null;
+            } else if (waited >= 20000) {
+              // Nothing after 20s: uncover the element regardless so the
+              // learner is never left staring at a permanent "Connecting…".
+              setStatus('live');
+              clearInterval(frameWatchRef.current);
+              frameWatchRef.current = null;
+            }
+          }, 250);
+          cleanupVideoListenersRef.current = () => {
+            vid.removeEventListener('loadeddata', markLive);
+            vid.removeEventListener('playing', markLive);
+            vid.removeEventListener('resize', markLive);
+          };
+        }
+
         await client.start();
         if (track) client.listenToMediastreamTrack(track);
         clientRef.current = client;
@@ -62,6 +101,8 @@ const SimliAvatar = forwardRef(function SimliAvatar({ size = 170, onStatusChange
       }
     },
     stop() {
+      if (frameWatchRef.current) { clearInterval(frameWatchRef.current); frameWatchRef.current = null; }
+      if (cleanupVideoListenersRef.current) { cleanupVideoListenersRef.current(); cleanupVideoListenersRef.current = null; }
       if (clientRef.current) { clientRef.current.stop(); clientRef.current = null; }
       setStatus('idle');
     },
