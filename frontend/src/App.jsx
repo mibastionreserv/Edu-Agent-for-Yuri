@@ -1,7 +1,7 @@
 import React, {
   useEffect, useMemo, useRef, useState,
 } from 'react';
-import { api, getToken, setToken } from './api.js';
+import { api, getToken, setToken, fetchTtsAudio } from './api.js';
 import { avatarSVG } from './avatar.js';
 import SimliAvatar from './SimliAvatar.jsx';
 import Board from './Board.jsx';
@@ -252,45 +252,45 @@ function Classroom({
   }
 
   // Holds the captured audio track between "we got it" and "the SimliAvatar
-  // element exists to hand it to" — setLiveNarration(true) below mounts
-  // <SimliAvatar>, and the effect further down calls .start() once its ref
-  // is actually attached (can't call simliRef.current.start() directly inside
-  // ensureLiveAvatar: it isn't rendered yet, since rendering it is gated on
-  // liveNarration).
+  // element exists to hand it to" — setLiveNarration(true) mounts
+  // <SimliAvatar>, and the effect below calls .start() once its ref is
+  // actually attached (can't call simliRef.current.start() directly from
+  // ensureLiveAvatarFromElement: it isn't rendered yet, since rendering it is
+  // gated on liveNarration).
   const pendingAudioTrackRef = useRef(null);
+  // The hidden <audio> element (rendered near the presenter, below) that
+  // plays our own server-synthesized narration. Its captureStream() is what
+  // actually drives Simli — no browser permission prompt needed for that,
+  // unlike capturing the whole tab.
+  const narrationAudioRef = useRef(null);
 
-  // Captures the tab's own audio output (once, on the learner's first Play
-  // click — a real user gesture, required for getDisplayMedia) and feeds it
-  // to the live Simli avatar as a persistent track for the rest of the
-  // lesson. Whatever plays through this tab from that point on — segment
-  // narration, the raise-hand prompt, Q&A answers, all of which go through
-  // the same speak() call — drives real lip-sync, since Simli only needs
-  // *a* live audio track, not necessarily one from a microphone.
+  // Grabs the narration <audio> element's own output as a live track and
+  // hands it to Simli, once, the first time server TTS actually plays.
   // A Simli connection with no audio at all goes idle and eventually blacks
-  // out (confirmed by hand), so this is the only way to get a moving avatar
-  // instead of the static animated photo. If the browser denies/doesn't
-  // support this, we just keep using the static photo — no error shown.
-  async function ensureLiveAvatar() {
+  // out (confirmed by hand), so this is what makes the live video worth
+  // showing at all — if captureStream isn't supported, we silently keep
+  // using the static animated photo instead.
+  function ensureLiveAvatarFromElement(el) {
     if (!simliFaceId || simliAttemptedRef.current) return;
     simliAttemptedRef.current = true;
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) return;
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true, preferCurrentTab: true });
-      stream.getVideoTracks().forEach((t) => t.stop()); // only the audio drives Simli
+      const captureFn = el.captureStream || el.mozCaptureStream;
+      if (!captureFn) return;
+      const stream = captureFn.call(el);
       const track = stream.getAudioTracks()[0];
-      if (!track) { stream.getTracks().forEach((t) => t.stop()); return; }
+      if (!track) return;
       narrationStreamRef.current = stream;
-      track.addEventListener('ended', () => { narrationStreamRef.current = null; setLiveNarration(false); });
       pendingAudioTrackRef.current = track;
       setSimliFailed(false);
       setLiveNarration(true);
     } catch {
-      // Denied, cancelled, or unsupported — silently keep the static photo.
+      // Unsupported — silently keep the static animated photo.
     }
   }
 
-  // Fires once <SimliAvatar> actually mounts (right after ensureLiveAvatar
-  // sets liveNarration true) and hands it the audio track we already have.
+  // Fires once <SimliAvatar> actually mounts (right after
+  // ensureLiveAvatarFromElement sets liveNarration true) and hands it the
+  // audio track we already captured.
   useEffect(() => {
     if (!liveNarration || !simliRef.current || !pendingAudioTrackRef.current) return;
     const track = pendingAudioTrackRef.current;
@@ -298,6 +298,63 @@ function Classroom({
     simliRef.current.start(track, simliFaceId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveNarration]);
+
+  // Synthesizes text on the backend (Gemini TTS) and plays it through the
+  // hidden narration <audio> element, tracking progress from its real
+  // currentTime/duration — far more accurate than the Web Speech estimate
+  // below. Returns true if it handled playback, false if the caller should
+  // fall back to the browser's Web Speech API (TTS unavailable/failed).
+  async function speakViaServerTts(text, {
+    charOffset, textLen, driveBoard, nSteps, finish,
+  }) {
+    const el = narrationAudioRef.current;
+    if (!el) return false;
+    let objectUrl;
+    try {
+      const blob = await fetchTtsAudio(text, 'Gacrux');
+      objectUrl = URL.createObjectURL(blob);
+    } catch {
+      return false; // TTS unavailable this time — Web Speech API takes over
+    }
+    el.src = objectUrl;
+
+    let resolveDone;
+    const done = new Promise((resolve) => { resolveDone = resolve; });
+    const onEnded = () => resolveDone();
+    el.addEventListener('ended', onEnded, { once: true });
+    // Reuses the same stopSpeechRef mechanism pauseNarration()/stopAll()
+    // already call for the Web Speech path — no changes needed there.
+    stopSpeechRef.current = () => {
+      el.removeEventListener('ended', onEnded);
+      el.pause();
+      resolveDone();
+    };
+
+    if (driveBoard) {
+      progressTimerRef.current = setInterval(() => {
+        if (!el.duration) return;
+        const abs = charOffset + (el.currentTime / el.duration) * Math.max(0, textLen - charOffset);
+        lastCharRef.current = Math.max(lastCharRef.current, Math.min(abs, textLen));
+        setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
+      }, 150);
+    }
+
+    try {
+      await el.play();
+    } catch {
+      // Autoplay blocked or similar — fall back to Web Speech for this line.
+      if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
+      el.removeEventListener('ended', onEnded);
+      stopSpeechRef.current = null;
+      URL.revokeObjectURL(objectUrl);
+      return false;
+    }
+    ensureLiveAvatarFromElement(el); // first successful play wires Simli up
+    await done;
+    URL.revokeObjectURL(objectUrl);
+    finish();
+    return true;
+  }
 
   async function speakWithMouth(text, {
     onEnd, driveBoard, charOffset = 0, fullLen,
@@ -309,6 +366,28 @@ function Classroom({
     const textLen = fullLen ?? (text || '').length;
     const nSteps = driveBoard ? steps.length : 0;
     if (driveBoard && charOffset === 0) setRevealed(nSteps > 0 ? 1 : 0);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+
+    const finish = () => {
+      if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
+      if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
+      setSpeaking(false); setMouth(false);
+      const wasInterrupted = interruptedRef.current;
+      interruptedRef.current = false;
+      if (driveBoard && !wasInterrupted) { setRevealed(nSteps); lastCharRef.current = textLen; }
+      if (onEnd) onEnd();
+    };
+
+    // Personas with a live Simli face get real, server-synthesized speech so
+    // the avatar's lip-sync matches her actual voice. Everyone else (and
+    // Simli personas if the TTS call fails) uses the browser's Web Speech
+    // API, same as always.
+    if (simliFaceId) {
+      const handled = await speakViaServerTts(text, {
+        charOffset, textLen, driveBoard, nSteps, finish,
+      });
+      if (handled) return;
+    }
 
     // Chrome's SpeechSynthesisUtterance "boundary" event doesn't fire at all
     // for some network voices (confirmed: zero boundary events over a full
@@ -318,7 +397,6 @@ function Classroom({
     // they still update the same ref with a (more accurate) value.
     const CHARS_PER_MS = 0.0152; // ~160 wpm at the utterance's rate (0.97)
     const startedAt = Date.now();
-    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     if (driveBoard) {
       progressTimerRef.current = setInterval(() => {
         const estAbs = charOffset + (Date.now() - startedAt) * CHARS_PER_MS;
@@ -333,29 +411,14 @@ function Classroom({
         lastCharRef.current = Math.max(lastCharRef.current, abs);
         setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
       } : undefined,
-      onEnd: () => {
-        if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
-        if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
-        setSpeaking(false); setMouth(false);
-        const wasInterrupted = interruptedRef.current;
-        interruptedRef.current = false;
-        if (driveBoard && !wasInterrupted) { setRevealed(nSteps); lastCharRef.current = textLen; }
-        if (onEnd) onEnd();
-      },
+      onEnd: finish,
     });
-    if (!speechSupported()) {
-      if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
-      if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
-      setSpeaking(false); setMouth(false);
-      if (driveBoard) { setRevealed(nSteps); lastCharRef.current = textLen; }
-      if (onEnd) onEnd();
-    }
+    if (!speechSupported()) finish();
   }
 
   function play() {
     if (!segment) return;
     setShowCheck(false);
-    if (simliFaceId) ensureLiveAvatar();
     const full = presenterText(segment.text);
     fullTextRef.current = full;
     lastCharRef.current = 0;
@@ -475,6 +538,10 @@ function Classroom({
               <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
                 {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
               </div>
+              {/* Hidden player for server-synthesized speech (Simli personas
+                  only) — never shown, its captureStream() is what feeds the
+                  live avatar; see ensureLiveAvatarFromElement. */}
+              {simliFaceId && <audio ref={narrationAudioRef} style={{ display: 'none' }} />}
             </div>
 
             <div className={`board-col ${captionsOn && !showCheck ? 'with-captions' : ''}`}>

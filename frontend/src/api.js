@@ -44,3 +44,19 @@ export const api = {
   simliIce: () => request('/simli-ice', { auth: true }),
 };
 
+// Server-generated speech audio (WAV, binary) — bypasses the JSON-only
+// request() helper above. Throws on any non-2xx response so callers can fall
+// back to the browser's own Web Speech API.
+export async function fetchTtsAudio(text, voice) {
+  const headers = { 'Content-Type': 'application/json' };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch('/api/tts', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ text, voice }),
+  });
+  if (!res.ok) throw new Error('tts failed');
+  return res.blob();
+}
+

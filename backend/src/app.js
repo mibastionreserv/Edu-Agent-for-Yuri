@@ -9,6 +9,7 @@ import {
   loadCourse, loadModule, loadUiStrings, loadConfig, contentDir,
 } from './content.js';
 import { getAnswer } from './answerProvider.js';
+import { synthesizeSpeech } from './tts.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -225,6 +226,27 @@ export function createApp(pool) {
       return res.json({ iceServers });
     } catch {
       return res.status(502).json({ error: 'Could not reach Simli.' });
+    }
+  });
+
+  // --- Server-side TTS: gives the live Simli avatar real audio to lip-sync
+  // to (segment narration, the raise-hand prompt, Q&A answers). Reuses the
+  // Gemini key already configured for LLM_API_KEY — no new signup needed.
+  // Personas without a Simli face keep using the browser's Web Speech API and
+  // never call this; if it fails for any reason, the frontend falls back to
+  // Web Speech API too, so narration itself is never at risk.
+  app.post('/api/tts', requireAuth, async (req, res) => {
+    const { text, voice } = req.body || {};
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'text is required.' });
+    }
+    try {
+      const wav = await synthesizeSpeech(text.trim(), { voice: voice || undefined });
+      res.set('Content-Type', 'audio/wav');
+      return res.send(wav);
+    } catch (err) {
+      console.error(`[tts] falling back to client speech: ${err && err.message}`);
+      return res.status(502).json({ error: 'TTS is unavailable.' });
     }
   });
 
