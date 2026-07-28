@@ -139,6 +139,14 @@ function Classroom({
   const [avatarConnecting, setAvatarConnecting] = useState(false);
   const mouthTimer = useRef(null);
   const stopSpeechRef = useRef(null);
+  // Bumped on every new speakWithMouth() call and on any pause/stop. Async
+  // speech attempts capture the value at their start and re-check it after
+  // each await; if it no longer matches, a newer attempt has taken over (or
+  // playback was cancelled) and this one quietly drops itself instead of
+  // playing stale audio — this is what fixes narration/answers that used to
+  // surface many seconds late (sometimes in the Web Speech fallback voice)
+  // because an old in-flight TTS fetch had no way to know it was obsolete.
+  const speechGenRef = useRef(0);
   const threadRef = useRef([]);
   threadRef.current = thread;
   // Absolute character position narration was interrupted at, and the full
@@ -232,6 +240,7 @@ function Classroom({
   // unlike pauseNarration() which deliberately remembers where it stopped.
   function stopAll() {
     interruptedRef.current = true;
+    speechGenRef.current += 1;
     if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
     if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
     if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
@@ -249,6 +258,7 @@ function Classroom({
   // that this wasn't a natural finish, so it must not clobber lastCharRef.
   function pauseNarration() {
     interruptedRef.current = true;
+    speechGenRef.current += 1;
     if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
     if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
     if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
@@ -428,28 +438,59 @@ function Classroom({
   // to video mid-sentence. A 10s cap keeps a stuck connection from hanging
   // the lesson forever; if it doesn't come up in time we just fall back to
   // the static photo and play the audio anyway.
+  //
+  // The Simli connection attempt (only ever made once per lesson) is kicked
+  // off BEFORE awaiting the TTS fetch, not after — captureStream() works
+  // fine on an <audio> element with no src yet, so the two slow steps run in
+  // parallel instead of stacking. Previously a slow TTS response (which
+  // scales with paragraph length — several seconds is normal for a full
+  // segment) was fully paid for before the up-to-10s Simli wait even began,
+  // which is what made the loading overlay take 20-30s combined.
   async function speakViaServerTts(text, {
-    charOffset, textLen, driveBoard, nSteps, finish,
+    charOffset, textLen, driveBoard, nSteps, finish, myGen,
   }) {
     const el = narrationAudioRef.current;
     if (!el) return false;
+
+    const isFirstAttempt = Boolean(simliFaceId) && !simliConnectReadyRef.current;
+    if (isFirstAttempt) setAvatarConnecting(true);
+    const simliPromise = isFirstAttempt
+      ? Promise.race([
+          ensureLiveAvatarFromElement(el),
+          new Promise((resolve) => { setTimeout(() => resolve(false), 10000); }),
+        ])
+      : null;
+
     let objectUrl;
     try {
       const blob = await fetchTtsAudio(text, 'Gacrux');
       objectUrl = URL.createObjectURL(blob);
     } catch {
+      if (isFirstAttempt) setAvatarConnecting(false);
       return false; // TTS unavailable this time — Web Speech API takes over
     }
+
+    // A newer speakWithMouth() call (segment change, pause, raise hand)
+    // started while this fetch was in flight — this line is stale, so drop
+    // it instead of playing audio for a moment the learner already left.
+    // Report "handled" so the caller does NOT additionally fall back to Web
+    // Speech for a line nobody is waiting on anymore.
+    if (myGen !== speechGenRef.current) {
+      if (isFirstAttempt) setAvatarConnecting(false);
+      URL.revokeObjectURL(objectUrl);
+      return true;
+    }
+
     el.src = objectUrl;
 
-    if (simliFaceId && !simliConnectReadyRef.current) {
-      setAvatarConnecting(true);
-      const ok = await Promise.race([
-        ensureLiveAvatarFromElement(el),
-        new Promise((resolve) => { setTimeout(() => resolve(false), 10000); }),
-      ]);
+    if (isFirstAttempt) {
+      const ok = await simliPromise;
       setAvatarConnecting(false);
       if (!ok) setSimliFailed(true);
+      if (myGen !== speechGenRef.current) {
+        URL.revokeObjectURL(objectUrl);
+        return true;
+      }
     }
 
     let resolveDone;
@@ -492,6 +533,7 @@ function Classroom({
   async function speakWithMouth(text, {
     onEnd, driveBoard, charOffset = 0, fullLen,
   } = {}) {
+    const myGen = ++speechGenRef.current;
     setSpeaking(true);
     interruptedRef.current = false;
     if (mouthTimer.current) clearInterval(mouthTimer.current);
@@ -517,7 +559,7 @@ function Classroom({
     // API, same as always.
     if (simliFaceId) {
       const handled = await speakViaServerTts(text, {
-        charOffset, textLen, driveBoard, nSteps, finish,
+        charOffset, textLen, driveBoard, nSteps, finish, myGen,
       });
       if (handled) return;
     }

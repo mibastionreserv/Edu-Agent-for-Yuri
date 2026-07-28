@@ -54,7 +54,22 @@ const TavusAvatar = forwardRef(function TavusAvatar({ size = 170, onStatusChange
       try {
         const { conversationId, conversationUrl } = await api.tavusStart();
         conversationIdRef.current = conversationId;
-        const call = Daily.createCallObject({ url: conversationUrl });
+        // We never send our own mic/camera — Tavus is the only audio/video
+        // source in echo mode. Without disabling these, Daily's default call
+        // object tries to acquire local mic+camera via getUserMedia() before
+        // it will join, and if that permission prompt is never answered (or
+        // is blocked), join() hangs forever and the avatar never appears —
+        // this was the root cause of Amara's live avatar never showing up.
+        const call = Daily.createCallObject({
+          url: conversationUrl,
+          audioSource: false,
+          videoSource: false,
+        });
+        // Set eagerly (not after join resolves) so teardown() can always
+        // reach this call object, including when join() below times out —
+        // otherwise a timed-out call keeps trying to connect in the
+        // background with nothing left able to leave/destroy it.
+        callRef.current = call;
         call.on('track-started', (ev) => {
           if (!ev || (ev.participant && ev.participant.local)) return;
           const stream = new MediaStream([ev.track]);
@@ -71,8 +86,15 @@ const TavusAvatar = forwardRef(function TavusAvatar({ size = 170, onStatusChange
             onStoppedSpeakingRef.current();
           }
         });
-        await call.join();
-        callRef.current = call;
+        // A hard cap so a stuck join() (network/ICE issues) falls back to
+        // Web Speech instead of leaving the full-screen loading overlay (see
+        // App.jsx's avatarConnecting gate) stuck forever.
+        await Promise.race([
+          call.join(),
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Timed out connecting to the live avatar.')), 15000);
+          }),
+        ]);
         return conversationId;
       } catch (e) {
         setStatus('error');
