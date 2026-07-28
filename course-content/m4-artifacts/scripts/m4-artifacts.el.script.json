@@ -1,0 +1,178 @@
+{
+  "moduleId": "m4-artifacts",
+  "language": "el",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "three-artifacts",
+      "text": "Μιλήσαμε για το ποιος κάνει τη δουλειά και πότε. Τώρα: πώς μοιάζει η δουλειά καθώς κινείται. Το Scrum έχει τρία artifacts, και το καθένα φέρει μια υπόσχεση — μια δέσμευση. Ξεκίνα με το Product Backlog: τη μοναδική, ταξινομημένη λίστα με ό,τι μπορεί να χρειαστεί το προϊόν, ιδιοκτησία του Product Owner. Η δέσμευσή του είναι ο Product Goal. Όταν ξεκινάμε ένα Sprint, οι Developers τραβούν στοιχεία στο Sprint Backlog — τον Sprint Goal, τα επιλεγμένα στοιχεία και το σχέδιο. Ανήκει στους Developers, και η δέσμευσή του είναι αυτός ο Sprint Goal. Καθώς χτίζουν, παράγουν ένα Increment — ένα λειτουργικό, χρήσιμο κομμάτι προϊόντος που προστίθεται σε όλα τα προηγούμενα. Η δέσμευσή του είναι το Definition of Done.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "pb",
+              "x": 30,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Product Backlog",
+              "color": "grey"
+            },
+            {
+              "t": "note",
+              "x": 30,
+              "y": 160,
+              "text": "Δέσμευση: Product Goal"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "sb",
+              "x": 250,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Sprint Backlog",
+              "color": "blue"
+            },
+            {
+              "t": "note",
+              "x": 250,
+              "y": 160,
+              "text": "Δέσμευση: Sprint Goal"
+            },
+            {
+              "t": "arrow",
+              "from": "pb",
+              "to": "sb",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "incr",
+              "x": 470,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Increment",
+              "color": "green"
+            },
+            {
+              "t": "note",
+              "x": 470,
+              "y": 160,
+              "text": "Δέσμευση: Definition of Done"
+            },
+            {
+              "t": "arrow",
+              "from": "sb",
+              "to": "incr",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "definition-of-done",
+      "text": "Να η πύλη που κρατά έντιμη την ποιότητα: το Definition of Done. Είναι η κοινή λίστα ελέγχου για το τι πραγματικά σημαίνει 'τελειωμένο' — δοκιμασμένο, ενσωματωμένο, σύμφωνο με τα πρότυπά μας. Η ομάδα Scrum το κατέχει· αν ο οργανισμός έχει κοινό πρότυπο ξεκινάς από εκεί και μπορείς να το κάνεις αυστηρότερο, ποτέ πιο χαλαρό. Και αν ένα στοιχείο δεν είναι Done; Τότε δεν αποτελεί μέρος του Increment, δεν το δείχνουμε ως τελειωμένο στο Review, και επιστρέφει στο Product Backlog για να το επανεξετάσει ο Product Owner. Το 'σχεδόν έτοιμο' δεν υπάρχει στο Scrum — είναι Done ή δεν είναι.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "dod",
+              "x": 220,
+              "y": 95,
+              "w": 220,
+              "h": 80,
+              "text": "Definition of Done — η πύλη ποιότητας",
+              "color": "orange"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "done",
+              "x": 90,
+              "y": 280,
+              "w": 200,
+              "h": 70,
+              "text": "Πληροί το DoD → μέρος του Increment",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "dod",
+              "to": "done",
+              "color": "#2fa36b"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "notdone",
+              "x": 360,
+              "y": 280,
+              "w": 230,
+              "h": 70,
+              "text": "Όχι Done → πίσω στο Product Backlog",
+              "color": "red"
+            },
+            {
+              "t": "arrow",
+              "from": "dod",
+              "to": "notdone",
+              "color": "#e0564a"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Έλεγχος γνώσεων: artifacts",
+    "items": [
+      {
+        "type": "match",
+        "prompt": "Αντιστοίχισε κάθε artifact με τη δέσμευσή του.",
+        "pairs": [
+          {
+            "left": "Product Backlog",
+            "right": "Product Goal"
+          },
+          {
+            "left": "Sprint Backlog",
+            "right": "Sprint Goal"
+          },
+          {
+            "left": "Increment",
+            "right": "Definition of Done"
+          }
+        ]
+      },
+      {
+        "type": "mcq",
+        "prompt": "Ένα στοιχείο είναι '90% έτοιμο' στο τέλος του Sprint. Τι γίνεται;",
+        "options": [
+          "Κυκλοφορεί ούτως ή άλλως ως μερικό Increment",
+          "Το Sprint επεκτείνεται δύο μέρες για να τελειώσει",
+          "Δεν είναι μέρος του Increment και επιστρέφει στο Product Backlog"
+        ],
+        "answer": 2
+      }
+    ]
+  }
+}

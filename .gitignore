@@ -1,0 +1,15 @@
+# secrets / env
+.env
+*.env.local
+
+# dependencies & build output
+node_modules/
+dist/
+coverage/
+
+# logs / os
+*.log
+.DS_Store
+
+# postgres data (persisted in a docker named volume, never in the repo)
+pgdata/

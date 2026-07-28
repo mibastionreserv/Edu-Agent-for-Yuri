@@ -1,0 +1,184 @@
+{
+  "moduleId": "m1-roles",
+  "language": "it",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "what-is-scrum",
+      "text": "Benvenuto! Sono Mira e insieme faremo davvero capire lo Scrum. Lo Scrum è un framework leggero per costruire prodotti complessi quando non puoi prevedere tutto in anticipo. È un framework, non un metodo fisso: ti dà solo l'essenziale e il resto lo completa il tuo team. Funziona grazie a un'idea — l'empirismo: impariamo da ciò che accade davvero e ci adattiamo, invece di seguire un piano rigido fino al disastro. L'empirismo poggia su tre pilastri: trasparenza, rendiamo visibile il lavoro; ispezione, lo controlliamo spesso; e adattamento, cambiamo rotta quando impariamo qualcosa.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "fw",
+              "x": 170,
+              "y": 80,
+              "w": 320,
+              "text": "Scrum — un framework leggero",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "emp",
+              "x": 150,
+              "y": 210,
+              "w": 360,
+              "text": "Empirismo: Trasparenza · Ispezione · Adattamento",
+              "color": "green"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "team-and-roles",
+      "text": "Ora, chi fa il lavoro? Nello Scrum c'è un solo Scrum Team — di solito dieci persone o meno, niente sotto-team, nessun capo al suo interno. È interfunzionale, quindi insieme hanno tutte le competenze necessarie, e auto-gestito, quindi decidono come svolgere il lavoro. Ci sono tre responsabilità. Primo, il Product Owner — responsabile del valore del prodotto, il Cosa e il Perché; possiede il Product Backlog, ed è una persona, non un comitato. Secondo, lo Scrum Master, responsabile di come lavoriamo — un coach che serve il team e rimuove gli impedimenti, non un project manager né un capo. Terzo, i Developer, responsabili di come costruire — il gruppo interfunzionale che trasforma le idee in un Incremento utilizzabile ogni Sprint. I tre stanno alla pari; nessuno comanda gli altri.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "frame",
+              "x": 40,
+              "y": 150,
+              "w": 580,
+              "h": 230,
+              "label": "Un unico Scrum Team"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "circle",
+              "id": "po",
+              "x": 160,
+              "y": 270,
+              "r": 60,
+              "label": "Product Owner",
+              "sub": "Cosa & Perché · Valore",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "circle",
+              "id": "sm",
+              "x": 330,
+              "y": 270,
+              "r": 60,
+              "label": "Scrum Master",
+              "sub": "Come lavoriamo · Coach",
+              "color": "green"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "circle",
+              "id": "dev",
+              "x": 500,
+              "y": 270,
+              "r": 60,
+              "label": "Developer",
+              "sub": "Come costruire",
+              "color": "orange"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "arrow",
+              "from": "po",
+              "to": "sm",
+              "color": "#8892b0"
+            },
+            {
+              "t": "arrow",
+              "from": "sm",
+              "to": "dev",
+              "color": "#8892b0"
+            },
+            {
+              "t": "arrow",
+              "from": "dev",
+              "to": "po",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "values",
+      "text": "Un'ultima cosa: i cinque Valori Scrum — Impegno, Focus, Apertura, Rispetto e Coraggio. Sembrano concetti morbidi, ma sono la colla. Senza apertura non c'è trasparenza; senza coraggio nessuno dice la verità scomoda in una retrospettiva. Vivi i valori e tutto il resto dello Scrum inizia a funzionare. Verifica rapida: chi decide cosa costruisce il team dopo? Il Product Owner. E chi rimuove un ostacolo che rallenta il team? Lo Scrum Master aiuta in questo.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "vals",
+              "x": 110,
+              "y": 150,
+              "w": 420,
+              "h": 80,
+              "text": "Impegno · Focus · Apertura · Rispetto · Coraggio",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "note",
+              "x": 110,
+              "y": 260,
+              "text": "I valori creano la fiducia che fa funzionare l'empirismo."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Verifica sui ruoli",
+    "items": [
+      {
+        "type": "match",
+        "prompt": "Abbina ogni responsabilità al ruolo che la possiede.",
+        "pairs": [
+          {
+            "left": "Ordina il Product Backlog",
+            "right": "Product Owner"
+          },
+          {
+            "left": "Rimuove impedimenti / fa coaching",
+            "right": "Scrum Master"
+          },
+          {
+            "left": "Costruisce l'Incremento utilizzabile",
+            "right": "Developer"
+          }
+        ]
+      },
+      {
+        "type": "mcq",
+        "prompt": "Lo Scrum è descritto meglio come…",
+        "options": [
+          "una metodologia fissa passo-passo",
+          "un framework leggero basato sull'empirismo",
+          "uno standard di documentazione"
+        ],
+        "answer": 1
+      }
+    ]
+  }
+}

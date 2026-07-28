@@ -1,0 +1,47 @@
+# Single-container image for Render (or any Docker host).
+#
+# Builds the React frontend, then packages it together with the Node/Express
+# backend so ONE process serves everything on ONE port:
+#   /            -> built frontend (SPA)
+#   /api/*       -> backend API
+#   /content/*   -> public course content
+#
+# This matches the "single-container option" already supported in
+# backend/src/app.js (it serves ../public when that folder exists).
+#
+# Build context must be the repo root (this folder), because we copy both
+# ./frontend, ./backend and ./course-content.
+
+# ---------- Stage 1: build the frontend ----------
+FROM node:20-alpine AS frontend
+WORKDIR /fe
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build          # produces /fe/dist
+
+# ---------- Stage 2: backend + static frontend ----------
+FROM node:20-alpine
+WORKDIR /app
+
+# Backend production dependencies only.
+COPY backend/package.json backend/package-lock.json* ./
+RUN npm install --omit=dev --no-audit --no-fund
+
+# Backend source + migrations.
+COPY backend/src ./src
+COPY backend/migrations ./migrations
+
+# Course content lives inside the image (no runtime volume on Render).
+COPY course-content ./course-content
+
+# Built frontend goes where app.js looks for it: <app>/../public relative to
+# src/, i.e. /app/public.
+COPY --from=frontend /fe/dist ./public
+
+ENV NODE_ENV=production
+ENV CONTENT_DIR=/app/course-content
+# Render injects PORT at runtime; the app reads process.env.PORT (default 4000).
+EXPOSE 4000
+
+CMD ["node", "src/index.js"]

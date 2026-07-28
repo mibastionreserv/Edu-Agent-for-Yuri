@@ -1,0 +1,9 @@
+# Keep the Docker build context small and reproducible.
+**/node_modules
+**/dist
+**/.env
+.git
+.gitignore
+*.md
+!course-content/**
+npm-debug.log*

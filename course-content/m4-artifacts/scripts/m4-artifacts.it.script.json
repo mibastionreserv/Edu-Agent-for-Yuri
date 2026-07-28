@@ -1,0 +1,178 @@
+{
+  "moduleId": "m4-artifacts",
+  "language": "it",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "three-artifacts",
+      "text": "Abbiamo parlato di chi fa il lavoro e quando. Ora: com'è il lavoro mentre si muove. Lo Scrum ha tre artefatti, e ciascuno porta una promessa — un commitment. Inizia dal Product Backlog: l'unica lista ordinata di tutto ciò che il prodotto potrebbe servire, di proprietà del Product Owner. Il suo commitment è il Product Goal. Quando iniziamo uno Sprint, i Developer portano elementi nello Sprint Backlog — lo Sprint Goal, gli elementi scelti e il piano. Appartiene ai Developer, e il suo commitment è quello Sprint Goal. Mentre costruiscono, producono un Incremento — un pezzo di prodotto funzionante e utilizzabile che si aggiunge a tutto il precedente. Il suo commitment è la Definition of Done.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "pb",
+              "x": 30,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Product Backlog",
+              "color": "grey"
+            },
+            {
+              "t": "note",
+              "x": 30,
+              "y": 160,
+              "text": "Commitment: Product Goal"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "sb",
+              "x": 250,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Sprint Backlog",
+              "color": "blue"
+            },
+            {
+              "t": "note",
+              "x": 250,
+              "y": 160,
+              "text": "Commitment: Sprint Goal"
+            },
+            {
+              "t": "arrow",
+              "from": "pb",
+              "to": "sb",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "incr",
+              "x": 470,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Incremento",
+              "color": "green"
+            },
+            {
+              "t": "note",
+              "x": 470,
+              "y": 160,
+              "text": "Commitment: Definition of Done"
+            },
+            {
+              "t": "arrow",
+              "from": "sb",
+              "to": "incr",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "definition-of-done",
+      "text": "Ecco il cancello che tiene onesta la qualità: la Definition of Done. È la checklist condivisa di cosa significa davvero 'finito' — testato, integrato, conforme ai nostri standard. Il Team Scrum la possiede; se l'organizzazione ha uno standard condiviso, parti da lì e puoi renderla più severa, mai più lasca. E se un elemento non è Done? Allora non fa parte dell'Incremento, non lo mostriamo come finito al Review, e torna nel Product Backlog perché il Product Owner lo riconsideri. 'Quasi finito' non esiste nello Scrum — è Done oppure no.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "dod",
+              "x": 220,
+              "y": 95,
+              "w": 220,
+              "h": 80,
+              "text": "Definition of Done — il cancello di qualità",
+              "color": "orange"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "done",
+              "x": 90,
+              "y": 280,
+              "w": 200,
+              "h": 70,
+              "text": "Rispetta la DoD → parte dell'Incremento",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "dod",
+              "to": "done",
+              "color": "#2fa36b"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "notdone",
+              "x": 360,
+              "y": 280,
+              "w": 230,
+              "h": 70,
+              "text": "Non Done → torna nel Product Backlog",
+              "color": "red"
+            },
+            {
+              "t": "arrow",
+              "from": "dod",
+              "to": "notdone",
+              "color": "#e0564a"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Verifica sugli artefatti",
+    "items": [
+      {
+        "type": "match",
+        "prompt": "Abbina ogni artefatto al suo commitment.",
+        "pairs": [
+          {
+            "left": "Product Backlog",
+            "right": "Product Goal"
+          },
+          {
+            "left": "Sprint Backlog",
+            "right": "Sprint Goal"
+          },
+          {
+            "left": "Incremento",
+            "right": "Definition of Done"
+          }
+        ]
+      },
+      {
+        "type": "mcq",
+        "prompt": "Un elemento è 'al 90%' a fine Sprint. Cosa succede?",
+        "options": [
+          "Viene comunque rilasciato come Incremento parziale",
+          "Lo Sprint è prolungato di due giorni per finirlo",
+          "Non fa parte dell'Incremento e torna nel Product Backlog"
+        ],
+        "answer": 2
+      }
+    ]
+  }
+}

@@ -1,0 +1,178 @@
+{
+  "moduleId": "m4-artifacts",
+  "language": "de",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "three-artifacts",
+      "text": "Wir haben besprochen, wer die Arbeit macht und wann. Jetzt: wie die Arbeit aussieht, während sie fließt. Scrum hat drei Artefakte, und jedes trägt ein Versprechen — ein Commitment. Beginne mit dem Product Backlog: die einzige, geordnete Liste von allem, was das Produkt braucht, im Besitz der Product Ownerin. Sein Commitment ist das Produktziel. Zum Sprintstart ziehen die Developer Einträge ins Sprint Backlog — das Sprint-Ziel, die gewählten Einträge und der Plan. Es gehört den Developern, sein Commitment ist dieses Sprint-Ziel. Beim Bauen entsteht ein Increment — ein funktionierendes, nutzbares Stück Produkt, das zu allem Bisherigen hinzukommt. Sein Commitment ist die Definition of Done.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "pb",
+              "x": 30,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Product Backlog",
+              "color": "grey"
+            },
+            {
+              "t": "note",
+              "x": 30,
+              "y": 160,
+              "text": "Commitment: Produktziel"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "sb",
+              "x": 250,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Sprint Backlog",
+              "color": "blue"
+            },
+            {
+              "t": "note",
+              "x": 250,
+              "y": 160,
+              "text": "Commitment: Sprint-Ziel"
+            },
+            {
+              "t": "arrow",
+              "from": "pb",
+              "to": "sb",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "incr",
+              "x": 470,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Increment",
+              "color": "green"
+            },
+            {
+              "t": "note",
+              "x": 470,
+              "y": 160,
+              "text": "Commitment: Definition of Done"
+            },
+            {
+              "t": "arrow",
+              "from": "sb",
+              "to": "incr",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "definition-of-done",
+      "text": "Hier das Tor, das Qualität ehrlich hält: die Definition of Done. Sie ist die gemeinsame Checkliste, was 'fertig' wirklich heißt — getestet, integriert, unseren Standards genügend. Das Scrum-Team besitzt sie; hat die Organisation einen gemeinsamen Standard, beginnst du dort und darfst strenger werden, nie lockerer. Was, wenn ein Eintrag nicht fertig ist? Dann gehört er nicht zum Increment, wir zeigen ihn im Review nicht als fertig, und er geht zurück ins Product Backlog, damit die Product Ownerin ihn neu bewertet. 'Fast fertig' gibt es in Scrum nicht — fertig oder nicht.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "dod",
+              "x": 220,
+              "y": 95,
+              "w": 220,
+              "h": 80,
+              "text": "Definition of Done — das Qualitätstor",
+              "color": "orange"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "done",
+              "x": 90,
+              "y": 280,
+              "w": 200,
+              "h": 70,
+              "text": "Erfüllt DoD → Teil des Increments",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "dod",
+              "to": "done",
+              "color": "#2fa36b"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "notdone",
+              "x": 360,
+              "y": 280,
+              "w": 230,
+              "h": 70,
+              "text": "Nicht fertig → zurück ins Product Backlog",
+              "color": "red"
+            },
+            {
+              "t": "arrow",
+              "from": "dod",
+              "to": "notdone",
+              "color": "#e0564a"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Wissenscheck: Artefakte",
+    "items": [
+      {
+        "type": "match",
+        "prompt": "Ordne jedes Artefakt seinem Commitment zu.",
+        "pairs": [
+          {
+            "left": "Product Backlog",
+            "right": "Produktziel"
+          },
+          {
+            "left": "Sprint Backlog",
+            "right": "Sprint-Ziel"
+          },
+          {
+            "left": "Increment",
+            "right": "Definition of Done"
+          }
+        ]
+      },
+      {
+        "type": "mcq",
+        "prompt": "Ein Eintrag ist am Sprintende '90 % fertig'. Was passiert?",
+        "options": [
+          "Es wird trotzdem als Teil-Increment ausgeliefert",
+          "Der Sprint wird zwei Tage verlängert, um es fertigzustellen",
+          "Es gehört nicht zum Increment und geht zurück ins Product Backlog"
+        ],
+        "answer": 2
+      }
+    ]
+  }
+}

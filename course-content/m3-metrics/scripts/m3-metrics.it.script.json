@@ -1,0 +1,212 @@
+{
+  "moduleId": "m3-metrics",
+  "language": "it",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "why-metrics",
+      "text": "Lo Scrum è empirico — ci orientiamo con ciò che osserviamo. Servono quindi alcuni numeri onesti. Te ne insegno tre: velocity, il grafico burndown e lead time contro cycle time. E ti insegno la trappola di ciascuno, perché una metrica usata male è peggio di nessuna.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "three",
+              "x": 140,
+              "y": 170,
+              "w": 380,
+              "h": 80,
+              "text": "Velocity · Burndown · Lead / Cycle time",
+              "color": "blue"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "velocity",
+      "text": "La velocity è semplicemente quanti story point — le nostre unità di dimensione relativa — un team completa in uno Sprint. Tracciala su più Sprint e ottieni una media affidabile con cui il Product Owner può fare previsioni. Ma due avvertenze: la velocity appartiene a un solo team, quindi non confrontare mai i team con essa; ed è una previsione, non un obiettivo — appena pretendi un numero più alto, le persone gonfiano le stime e il numero ti mente.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "vel",
+              "x": 180,
+              "y": 120,
+              "w": 300,
+              "h": 70,
+              "text": "Velocity media = 30 SP",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "note",
+              "x": 110,
+              "y": 230,
+              "text": "Una previsione, non un obiettivo. Mai confrontare i team."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "burndown",
+      "text": "Ora guarda la lavagna — disegno un grafico burndown. L'asse orizzontale sono i giorni dello Sprint; quello verticale è il lavoro rimanente. Questa linea grigia tratteggiata è l'ideale: una discesa dritta dai nostri punti iniziali fino a zero l'ultimo giorno. La linea rossa è il team reale. Vedi come resta piatta, poi scende, poi risale? Quel salto significa che è stato aggiunto lavoro a metà Sprint. La regola di lettura: ogni volta che la linea rossa è sopra quella tratteggiata, il team è in ritardo. Il burndown è la prima cosa da guardare al Daily Scrum.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "axes",
+              "id": "ax",
+              "x": 110,
+              "y": 90,
+              "w": 340,
+              "h": 240,
+              "xlabel": "Giorni Sprint 1–10",
+              "ylabel": "Story Point"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "line",
+              "id": "ideal",
+              "pts": [
+                [
+                  110,
+                  90
+                ],
+                [
+                  450,
+                  330
+                ]
+              ],
+              "color": "#9aa0aa",
+              "dashed": true
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "line",
+              "id": "actual",
+              "pts": [
+                [
+                  110,
+                  90
+                ],
+                [
+                  210,
+                  92
+                ],
+                [
+                  250,
+                  200
+                ],
+                [
+                  330,
+                  150
+                ],
+                [
+                  450,
+                  255
+                ]
+              ],
+              "color": "#e0564a"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "cross",
+              "x": 330,
+              "y": 150,
+              "color": "#e0564a",
+              "label": "ambito aggiunto"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lead-cycle",
+      "text": "Altre due, prese dal Lean. Il lead time è l'intero viaggio — dal momento in cui un'idea entra nel backlog a quando è rilasciata. Il cycle time è più stretto — da quando un Developer inizia davvero a lavorarci a quando è Done. Se il cycle time è breve ma il lead time è enorme, il problema non è costruire — è tutto ciò che è in coda prima di iniziare. Un indizio potente per una Retrospettiva.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "lead",
+              "x": 60,
+              "y": 150,
+              "w": 220,
+              "h": 70,
+              "text": "Lead time: idea → rilasciato",
+              "color": "grey"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "cycle",
+              "x": 340,
+              "y": 150,
+              "w": 240,
+              "h": 70,
+              "text": "Cycle time: iniziato → Done",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "lead",
+              "to": "cycle",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Verifica metriche — pianificazione velocity",
+    "items": [
+      {
+        "type": "velocity",
+        "limit": 30,
+        "prompt": "Trascina le card nello Sprint Backlog senza superare la velocity media di 30 Story Point.",
+        "cards": [
+          {
+            "label": "Ricerca sito",
+            "pts": 13
+          },
+          {
+            "label": "Carrello",
+            "pts": 8
+          },
+          {
+            "label": "Account utente",
+            "pts": 5
+          },
+          {
+            "label": "Integrazione bancaria",
+            "pts": 21
+          }
+        ],
+        "feedback": {
+          "ok": "Bene — entro la tua velocity di 30.",
+          "over": "Attenzione — oltre 30 punti. Impegnarsi oltre la velocity media rischia di sovraccaricare il team e mancare l'obiettivo.",
+          "under": "Ci sta, ma forse hai spazio per un po' più di valore."
+        }
+      }
+    ]
+  }
+}

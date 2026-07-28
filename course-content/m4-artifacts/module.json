@@ -1,0 +1,32 @@
+{
+  "id": "m4-artifacts",
+  "order": 4,
+  "estimatedMinutes": 10,
+  "title": {
+    "en": "Scrum Artifacts & the Definition of Done",
+    "de": "Scrum-Artefakte & die Definition of Done",
+    "it": "Artefatti Scrum e la Definition of Done",
+    "el": "Artifacts του Scrum & το Definition of Done"
+  },
+  "summary": {
+    "en": "The three artifacts, their commitments, and the quality gate that keeps 'Done' honest.",
+    "de": "Die drei Artefakte, ihre Commitments und das Qualitätstor, das 'fertig' ehrlich hält.",
+    "it": "I tre artefatti, i loro commitment e il cancello di qualità che tiene onesto il 'Done'.",
+    "el": "Τα τρία artifacts, οι δεσμεύσεις τους και η πύλη ποιότητας που κρατά έντιμο το 'Done'."
+  },
+  "scripts": {
+    "en": "scripts/m4-artifacts.en.script.json",
+    "de": "scripts/m4-artifacts.de.script.json",
+    "it": "scripts/m4-artifacts.it.script.json",
+    "el": "scripts/m4-artifacts.el.script.json"
+  },
+  "knowledgeBase": {
+    "en": "knowledge/m4-artifacts.en.md",
+    "de": "knowledge/m4-artifacts.de.md",
+    "it": "knowledge/m4-artifacts.it.md",
+    "el": "knowledge/m4-artifacts.el.md"
+  },
+  "prerequisites": [
+    "m2-events"
+  ]
+}

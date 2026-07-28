@@ -1,0 +1,35 @@
+{
+  "id": "m5-capstone",
+  "order": 5,
+  "estimatedMinutes": 12,
+  "title": {
+    "en": "Empiricism, Values & Anti-Patterns (Capstone)",
+    "de": "Empirie, Werte & Anti-Muster (Abschluss)",
+    "it": "Empirismo, valori e anti-pattern (Capstone)",
+    "el": "Εμπειρισμός, αξίες & αντι-πρότυπα (Capstone)"
+  },
+  "summary": {
+    "en": "Tie it together: how events and artifacts serve empiricism, common anti-patterns, and a final assessment.",
+    "de": "Alles verknüpfen: wie Ereignisse und Artefakte der Empirie dienen, häufige Anti-Muster und ein Abschlusstest.",
+    "it": "Colleghiamo tutto: come eventi e artefatti servono l'empirismo, anti-pattern comuni e una valutazione finale.",
+    "el": "Ένωσέ τα όλα: πώς γεγονότα και artifacts υπηρετούν τον εμπειρισμό, κοινά αντι-πρότυπα και τελική αξιολόγηση."
+  },
+  "scripts": {
+    "en": "scripts/m5-capstone.en.script.json",
+    "de": "scripts/m5-capstone.de.script.json",
+    "it": "scripts/m5-capstone.it.script.json",
+    "el": "scripts/m5-capstone.el.script.json"
+  },
+  "knowledgeBase": {
+    "en": "knowledge/m5-capstone.en.md",
+    "de": "knowledge/m5-capstone.de.md",
+    "it": "knowledge/m5-capstone.it.md",
+    "el": "knowledge/m5-capstone.el.md"
+  },
+  "prerequisites": [
+    "m1-roles",
+    "m2-events",
+    "m3-metrics",
+    "m4-artifacts"
+  ]
+}

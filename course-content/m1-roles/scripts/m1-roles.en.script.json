@@ -1,0 +1,184 @@
+{
+  "moduleId": "m1-roles",
+  "language": "en",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "what-is-scrum",
+      "text": "Welcome! I'm Mira, and together we'll make Scrum genuinely click. Scrum is a lightweight framework for building complex products when you can't predict everything up front. It's a framework, not a fixed method: it gives you only the essentials, and your team fills in the rest. It works because of one idea — empiricism: we learn from what actually happens and adjust, instead of following a fixed plan off a cliff. Empiricism stands on three pillars: transparency, we make the work visible; inspection, we check it often; and adaptation, we change course when we learn something.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "fw",
+              "x": 170,
+              "y": 80,
+              "w": 320,
+              "text": "Scrum — a lightweight framework",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "emp",
+              "x": 150,
+              "y": 210,
+              "w": 360,
+              "text": "Empiricism: Transparency · Inspection · Adaptation",
+              "color": "green"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "team-and-roles",
+      "text": "Now, who does the work? In Scrum there's one Scrum Team — usually ten people or fewer, no sub-teams, no bosses inside it. It's cross-functional, so together they have every skill needed, and self-managing, so they decide how to do the work. There are three accountabilities. First, the Product Owner — accountable for the value of the product, the What and the Why; they own the Product Backlog, and it's one person, not a committee. Second, the Scrum Master, who owns how we work — a coach who serves the team and clears impediments, not a project manager or a boss. Third, the Developers, who own how to build it — the cross-functional group who turn ideas into a usable Increment every Sprint. The three sit as equals; no one commands the others.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "frame",
+              "x": 40,
+              "y": 150,
+              "w": 580,
+              "h": 230,
+              "label": "One Scrum Team"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "circle",
+              "id": "po",
+              "x": 160,
+              "y": 270,
+              "r": 60,
+              "label": "Product Owner",
+              "sub": "What & Why · Value",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "circle",
+              "id": "sm",
+              "x": 330,
+              "y": 270,
+              "r": 60,
+              "label": "Scrum Master",
+              "sub": "How we work · Coach",
+              "color": "green"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "circle",
+              "id": "dev",
+              "x": 500,
+              "y": 270,
+              "r": 60,
+              "label": "Developers",
+              "sub": "How to build",
+              "color": "orange"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "arrow",
+              "from": "po",
+              "to": "sm",
+              "color": "#8892b0"
+            },
+            {
+              "t": "arrow",
+              "from": "sm",
+              "to": "dev",
+              "color": "#8892b0"
+            },
+            {
+              "t": "arrow",
+              "from": "dev",
+              "to": "po",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "values",
+      "text": "One more thing: the five Scrum Values — Commitment, Focus, Openness, Respect, and Courage. They sound soft, but they're the glue. Without openness there's no transparency; without courage nobody raises the hard truth in a retrospective. Live the values, and everything else in Scrum starts to work. Quick check: who decides what the team builds next? The Product Owner. And who removes a blocker slowing the team down? The Scrum Master helps with that.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "vals",
+              "x": 110,
+              "y": 150,
+              "w": 420,
+              "h": 80,
+              "text": "Commitment · Focus · Openness · Respect · Courage",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "note",
+              "x": 110,
+              "y": 260,
+              "text": "The values build the trust that makes empiricism work."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Roles knowledge check",
+    "items": [
+      {
+        "type": "match",
+        "prompt": "Match each responsibility to the accountability that owns it.",
+        "pairs": [
+          {
+            "left": "Orders the Product Backlog",
+            "right": "Product Owner"
+          },
+          {
+            "left": "Removes impediments / coaches",
+            "right": "Scrum Master"
+          },
+          {
+            "left": "Builds the usable Increment",
+            "right": "Developers"
+          }
+        ]
+      },
+      {
+        "type": "mcq",
+        "prompt": "Scrum is best described as…",
+        "options": [
+          "a fixed step-by-step methodology",
+          "a lightweight framework built on empiricism",
+          "a documentation standard"
+        ],
+        "answer": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,212 @@
+{
+  "moduleId": "m3-metrics",
+  "language": "de",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "why-metrics",
+      "text": "Scrum ist empirisch — wir steuern nach dem, was wir beobachten. Also brauchen wir ein paar ehrliche Zahlen. Ich zeige dir drei: Velocity, das Burndown-Diagramm und Durchlauf- gegen Zykluszeit. Und ich zeige dir die Falle in jeder, denn eine missbrauchte Kennzahl ist schlimmer als keine.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "three",
+              "x": 140,
+              "y": 170,
+              "w": 380,
+              "h": 80,
+              "text": "Velocity · Burndown · Durchlauf-/Zykluszeit",
+              "color": "blue"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "velocity",
+      "text": "Velocity ist einfach, wie viele Story Points — unsere Einheiten relativer Größe — ein Team in einem Sprint fertigstellt. Verfolge sie über mehrere Sprints und du erhältst einen verlässlichen Durchschnitt, mit dem die Product Ownerin planen kann. Aber zwei Warnungen: Velocity gehört einem Team, vergleiche also nie Teams damit; und sie ist eine Prognose, kein Ziel — sobald du eine höhere Zahl forderst, blähen Leute ihre Schätzungen auf und die Zahl belügt dich.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "vel",
+              "x": 180,
+              "y": 120,
+              "w": 300,
+              "h": 70,
+              "text": "Durchschnittliche Velocity = 30 SP",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "note",
+              "x": 110,
+              "y": 230,
+              "text": "Eine Prognose, kein Ziel. Nie Teams vergleichen."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "burndown",
+      "text": "Schau aufs Board — ich zeichne ein Burndown-Diagramm. Die waagerechte Achse sind die Sprinttage, die senkrechte die verbleibende Arbeit. Diese graue gepunktete Linie ist das Ideal: ein gerader Gleitflug von unseren Startpunkten bis null am letzten Tag. Die rote Linie ist das echte Team. Siehst du, wie sie flach bleibt, dann fällt, dann hochspringt? Der Sprung bedeutet, dass mitten im Sprint Arbeit dazukam. Die Leseregel: Immer wenn die rote Linie über der gepunkteten liegt, ist das Team im Rückstand. Das Burndown ist das Erste, worauf man im Daily Scrum schaut.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "axes",
+              "id": "ax",
+              "x": 110,
+              "y": 90,
+              "w": 340,
+              "h": 240,
+              "xlabel": "Sprinttage 1–10",
+              "ylabel": "Story Points"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "line",
+              "id": "ideal",
+              "pts": [
+                [
+                  110,
+                  90
+                ],
+                [
+                  450,
+                  330
+                ]
+              ],
+              "color": "#9aa0aa",
+              "dashed": true
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "line",
+              "id": "actual",
+              "pts": [
+                [
+                  110,
+                  90
+                ],
+                [
+                  210,
+                  92
+                ],
+                [
+                  250,
+                  200
+                ],
+                [
+                  330,
+                  150
+                ],
+                [
+                  450,
+                  255
+                ]
+              ],
+              "color": "#e0564a"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "cross",
+              "x": 330,
+              "y": 150,
+              "color": "#e0564a",
+              "label": "Umfang dazu"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lead-cycle",
+      "text": "Noch zwei, aus Lean geliehen. Durchlaufzeit ist die ganze Reise — vom Moment, in dem eine Idee ins Backlog kommt, bis sie ausgeliefert ist. Zykluszeit ist enger — von dem Moment, in dem ein Developer wirklich beginnt, bis es fertig ist. Ist deine Zykluszeit kurz, aber die Durchlaufzeit riesig, ist nicht das Bauen das Problem, sondern alles, was vorher in der Warteschlange liegt. Ein starker Hinweis für eine Retrospektive.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "lead",
+              "x": 60,
+              "y": 150,
+              "w": 220,
+              "h": 70,
+              "text": "Durchlaufzeit: Idee → ausgeliefert",
+              "color": "grey"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "cycle",
+              "x": 340,
+              "y": 150,
+              "w": 240,
+              "h": 70,
+              "text": "Zykluszeit: Start → fertig",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "lead",
+              "to": "cycle",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Wissenscheck: Velocity-Planung",
+    "items": [
+      {
+        "type": "velocity",
+        "limit": 30,
+        "prompt": "Ziehe Aufgabenkarten ins Sprint Backlog, ohne die durchschnittliche Velocity von 30 Story Points zu überschreiten.",
+        "cards": [
+          {
+            "label": "Website-Suche",
+            "pts": 13
+          },
+          {
+            "label": "Warenkorb",
+            "pts": 8
+          },
+          {
+            "label": "Benutzerkonto",
+            "pts": 5
+          },
+          {
+            "label": "Bank-Integration",
+            "pts": 21
+          }
+        ],
+        "feedback": {
+          "ok": "Gut — innerhalb deiner Velocity von 30.",
+          "over": "Vorsicht — über 30 Punkte. Mehr als die Durchschnitts-Velocity zuzusagen überlastet das Team und gefährdet das Ziel.",
+          "under": "Das passt, aber es ist vielleicht Platz für etwas mehr Wert."
+        }
+      }
+    ]
+  }
+}

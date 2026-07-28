@@ -1,0 +1,22 @@
+{
+  "name": "scrumstage-backend",
+  "version": "2.2.0",
+  "type": "module",
+  "description": "ScrumStage API: content-driven Scrum course, auth, progress, grounded Q&A",
+  "scripts": {
+    "start": "node src/index.js",
+    "migrate": "node src/migrate-cli.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.1",
+    "supertest": "^7.0.0",
+    "vitest": "^2.1.4"
+  }
+}

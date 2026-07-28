@@ -1,0 +1,184 @@
+{
+  "moduleId": "m1-roles",
+  "language": "de",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "what-is-scrum",
+      "text": "Willkommen! Ich bin Mira, und gemeinsam bringen wir Scrum wirklich auf den Punkt. Scrum ist ein leichtgewichtiges Rahmenwerk, um komplexe Produkte zu bauen, wenn man nicht alles im Voraus planen kann. Es ist ein Rahmenwerk, keine feste Methode: Es gibt nur das Wesentliche vor, den Rest füllt dein Team. Es funktioniert wegen einer Idee — Empirie: Wir lernen aus dem, was tatsächlich passiert, und passen an, statt einem starren Plan blind zu folgen. Empirie ruht auf drei Säulen: Transparenz, wir machen die Arbeit sichtbar; Überprüfung, wir prüfen sie häufig; und Anpassung, wir ändern den Kurs, wenn wir etwas lernen.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "fw",
+              "x": 170,
+              "y": 80,
+              "w": 320,
+              "text": "Scrum — ein leichtgewichtiges Rahmenwerk",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "emp",
+              "x": 150,
+              "y": 210,
+              "w": 360,
+              "text": "Empirie: Transparenz · Überprüfung · Anpassung",
+              "color": "green"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "team-and-roles",
+      "text": "Wer macht nun die Arbeit? In Scrum gibt es ein Scrum-Team — meist zehn Personen oder weniger, keine Unterteams, keine Chefs darin. Es ist crossfunktional, hat also gemeinsam alle nötigen Fähigkeiten, und selbstmanagend, entscheidet also, wie die Arbeit erledigt wird. Es gibt drei Verantwortlichkeiten. Erstens die Product Ownerin — verantwortlich für den Wert des Produkts, das Was und Warum; ihr gehört das Product Backlog, und es ist eine Person, kein Komitee. Zweitens der Scrum Master, dem gehört, wie wir arbeiten — ein Coach, der dem Team dient und Hindernisse beseitigt, kein Projektleiter und kein Chef. Drittens die Developer, denen gehört, wie gebaut wird — die crossfunktionale Gruppe, die Ideen in jedem Sprint in ein nutzbares Increment verwandelt. Die drei stehen als Gleiche nebeneinander; niemand befiehlt den anderen.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "frame",
+              "x": 40,
+              "y": 150,
+              "w": 580,
+              "h": 230,
+              "label": "Ein Scrum-Team"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "circle",
+              "id": "po",
+              "x": 160,
+              "y": 270,
+              "r": 60,
+              "label": "Product Owner",
+              "sub": "Was & Warum · Wert",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "circle",
+              "id": "sm",
+              "x": 330,
+              "y": 270,
+              "r": 60,
+              "label": "Scrum Master",
+              "sub": "Wie wir arbeiten · Coach",
+              "color": "green"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "circle",
+              "id": "dev",
+              "x": 500,
+              "y": 270,
+              "r": 60,
+              "label": "Developer",
+              "sub": "Wie gebaut wird",
+              "color": "orange"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "arrow",
+              "from": "po",
+              "to": "sm",
+              "color": "#8892b0"
+            },
+            {
+              "t": "arrow",
+              "from": "sm",
+              "to": "dev",
+              "color": "#8892b0"
+            },
+            {
+              "t": "arrow",
+              "from": "dev",
+              "to": "po",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "values",
+      "text": "Noch eine Sache: die fünf Scrum-Werte — Selbstverpflichtung, Fokus, Offenheit, Respekt und Mut. Sie klingen weich, sind aber der Klebstoff. Ohne Offenheit keine Transparenz; ohne Mut spricht niemand die harte Wahrheit in einer Retrospektive aus. Lebe die Werte, und alles andere in Scrum beginnt zu funktionieren. Kurzer Check: Wer entscheidet, was das Team als Nächstes baut? Die Product Ownerin. Und wer beseitigt ein Hindernis, das das Team bremst? Dabei hilft der Scrum Master.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "vals",
+              "x": 110,
+              "y": 150,
+              "w": 420,
+              "h": 80,
+              "text": "Selbstverpflichtung · Fokus · Offenheit · Respekt · Mut",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "note",
+              "x": 110,
+              "y": 260,
+              "text": "Die Werte schaffen das Vertrauen, das Empirie ermöglicht."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Wissenscheck: Rollen",
+    "items": [
+      {
+        "type": "match",
+        "prompt": "Ordne jede Aufgabe der zuständigen Verantwortlichkeit zu.",
+        "pairs": [
+          {
+            "left": "Ordnet das Product Backlog",
+            "right": "Product Owner"
+          },
+          {
+            "left": "Beseitigt Hindernisse / coacht",
+            "right": "Scrum Master"
+          },
+          {
+            "left": "Baut das nutzbare Increment",
+            "right": "Developer"
+          }
+        ]
+      },
+      {
+        "type": "mcq",
+        "prompt": "Scrum lässt sich am besten beschreiben als…",
+        "options": [
+          "eine feste Schritt-für-Schritt-Methode",
+          "ein leichtgewichtiges Rahmenwerk auf Basis von Empirie",
+          "ein Dokumentationsstandard"
+        ],
+        "answer": 1
+      }
+    ]
+  }
+}

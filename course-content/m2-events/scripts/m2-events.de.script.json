@@ -1,0 +1,183 @@
+{
+  "moduleId": "m2-events",
+  "language": "de",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "the-sprint",
+      "text": "Alles in Scrum folgt einem Rhythmus: dem Sprint. Stell ihn dir als feste Zeitbox vor — ein Monat oder weniger, die meisten Teams wählen zwei Wochen. Sobald ein Sprint endet, beginnt der nächste, ohne Lücken. Und hier die goldene Regel, präg sie dir ein: Die Länge eines Sprints ist fix. Du verlängerst ihn nicht, weil Arbeit unfertig ist. Gleich sehen wir genau, was mit unfertiger Arbeit passiert.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "sprint",
+              "x": 170,
+              "y": 150,
+              "w": 330,
+              "h": 90,
+              "text": "Der Sprint — eine feste Box, ein Monat oder weniger",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "rule",
+              "x": 190,
+              "y": 280,
+              "w": 290,
+              "h": 70,
+              "text": "Goldene Regel: nie verlängert",
+              "color": "red"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "the-events",
+      "text": "In jedem Sprint gibt es vier Ereignisse. Es beginnt mit dem Sprint Planning, wo das Team drei Fragen beantwortet: Warum — unser Sprint-Ziel; Was — welche Product-Backlog-Einträge wir nehmen; und Wie — unser Plan, sie zu erledigen. Aus dem Planning kommen ein Sprint-Ziel und ein Sprint Backlog. An jedem Arbeitstag halten die Developer ein fünfzehnminütiges Daily Scrum — kein Bericht an einen Chef, sondern das Team stimmt sich zum Fortschritt Richtung Sprint-Ziel ab. Gegen Ende kommt der Sprint Review, wo das Team das nutzbare Increment den Stakeholdern zeigt und mit ihnen bespricht, was als Nächstes kommt; das formt das Product Backlog neu. Zuletzt die Sprint-Retrospektive: Das Team schaut, wie es gearbeitet hat, und wählt ein bis zwei konkrete Verbesserungen. Dann beginnt die Schleife von vorn.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "pb",
+              "x": 30,
+              "y": 205,
+              "w": 130,
+              "h": 70,
+              "text": "Product Backlog",
+              "color": "grey"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "plan",
+              "x": 190,
+              "y": 95,
+              "w": 170,
+              "h": 80,
+              "text": "Sprint Planning → Ziel + Backlog",
+              "color": "blue"
+            },
+            {
+              "t": "arrow",
+              "from": "pb",
+              "to": "plan",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "loop",
+              "id": "daily",
+              "x": 390,
+              "y": 235,
+              "r": 58,
+              "label": "Daily Scrum · 15 Min"
+            },
+            {
+              "t": "arrow",
+              "from": "plan",
+              "to": "daily",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "review",
+              "x": 510,
+              "y": 95,
+              "w": 150,
+              "h": 80,
+              "text": "Sprint Review → Increment",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "daily",
+              "to": "review",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "retro",
+              "x": 510,
+              "y": 300,
+              "w": 150,
+              "h": 80,
+              "text": "Retrospektive → 1–2 Verbesserungen",
+              "color": "orange"
+            },
+            {
+              "t": "arrow",
+              "from": "review",
+              "to": "retro",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "arrow",
+              "from": "retro",
+              "to": "plan",
+              "color": "#2fa36b",
+              "label": "nächster Sprint"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Wissenscheck: Ereignisse",
+    "items": [
+      {
+        "type": "order",
+        "prompt": "Bringe die Scrum-Ereignisse in die Reihenfolge innerhalb eines Sprints.",
+        "items": [
+          "Sprint Planning",
+          "Daily Scrum",
+          "Sprint Review",
+          "Retrospektive"
+        ]
+      },
+      {
+        "type": "tf",
+        "prompt": "Richtig oder falsch?",
+        "statements": [
+          {
+            "text": "Ein Sprint kann verlängert werden, wenn die Arbeit nicht fertig ist.",
+            "answer": false
+          },
+          {
+            "text": "Das Daily Scrum ist ein Bericht an den Manager.",
+            "answer": false
+          },
+          {
+            "text": "Der Sprint Review passt das Product Backlog an.",
+            "answer": true
+          }
+        ]
+      }
+    ]
+  }
+}

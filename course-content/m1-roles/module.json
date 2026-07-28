@@ -1,0 +1,30 @@
+{
+  "id": "m1-roles",
+  "order": 1,
+  "estimatedMinutes": 10,
+  "title": {
+    "en": "Introduction to Scrum & Team Roles",
+    "de": "Einführung in Scrum & Teamrollen",
+    "it": "Introduzione allo Scrum e ai ruoli del team",
+    "el": "Εισαγωγή στο Scrum & ρόλοι ομάδας"
+  },
+  "summary": {
+    "en": "What Scrum is, the empirical foundation, the one Scrum Team and its three accountabilities.",
+    "de": "Was Scrum ist, die empirische Grundlage, das eine Scrum-Team und seine drei Verantwortlichkeiten.",
+    "it": "Cos'è lo Scrum, la base empirica, l'unico Scrum Team e le sue tre responsabilità.",
+    "el": "Τι είναι το Scrum, η εμπειρική βάση, η μία ομάδα Scrum και οι τρεις της αρμοδιότητες."
+  },
+  "scripts": {
+    "en": "scripts/m1-roles.en.script.json",
+    "de": "scripts/m1-roles.de.script.json",
+    "it": "scripts/m1-roles.it.script.json",
+    "el": "scripts/m1-roles.el.script.json"
+  },
+  "knowledgeBase": {
+    "en": "knowledge/m1-roles.en.md",
+    "de": "knowledge/m1-roles.de.md",
+    "it": "knowledge/m1-roles.it.md",
+    "el": "knowledge/m1-roles.el.md"
+  },
+  "prerequisites": []
+}

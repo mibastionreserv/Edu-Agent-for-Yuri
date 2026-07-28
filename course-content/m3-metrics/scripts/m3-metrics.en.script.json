@@ -1,0 +1,212 @@
+{
+  "moduleId": "m3-metrics",
+  "language": "en",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "why-metrics",
+      "text": "Scrum is empirical — we steer by what we observe. So we need a few honest numbers. I'll teach you three: velocity, the burndown chart, and lead versus cycle time. And I'll teach you the trap in each, because a misused metric is worse than none.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "three",
+              "x": 140,
+              "y": 170,
+              "w": 380,
+              "h": 80,
+              "text": "Velocity · Burndown · Lead / Cycle time",
+              "color": "blue"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "velocity",
+      "text": "Velocity is simply how many story points — our units of relative size — a team finishes in a Sprint. Track it over several Sprints and you get a reliable average the Product Owner can forecast with. But two warnings: velocity belongs to one team, so never compare teams by it; and it's a forecast, not a target — the moment you demand a higher number, people inflate their estimates and the number lies to you.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "vel",
+              "x": 180,
+              "y": 120,
+              "w": 300,
+              "h": 70,
+              "text": "Average velocity = 30 SP",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "note",
+              "x": 110,
+              "y": 230,
+              "text": "A forecast, not a target. Never compare teams."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "burndown",
+      "text": "Now watch the board — I'll draw a burndown chart. The horizontal axis is the days of the Sprint; the vertical axis is the work remaining. This grey dotted line is the ideal: a straight glide from our starting points down to zero on the last day. The red line is the real team. See how it holds flat, then drops, then jumps up? That jump means work was added mid-Sprint. Here's the reading rule: whenever the red line is above the dotted line, the team is behind. The burndown is the first thing to glance at in the Daily Scrum.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "axes",
+              "id": "ax",
+              "x": 110,
+              "y": 90,
+              "w": 340,
+              "h": 240,
+              "xlabel": "Sprint days 1–10",
+              "ylabel": "Story Points"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "line",
+              "id": "ideal",
+              "pts": [
+                [
+                  110,
+                  90
+                ],
+                [
+                  450,
+                  330
+                ]
+              ],
+              "color": "#9aa0aa",
+              "dashed": true
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "line",
+              "id": "actual",
+              "pts": [
+                [
+                  110,
+                  90
+                ],
+                [
+                  210,
+                  92
+                ],
+                [
+                  250,
+                  200
+                ],
+                [
+                  330,
+                  150
+                ],
+                [
+                  450,
+                  255
+                ]
+              ],
+              "color": "#e0564a"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "cross",
+              "x": 330,
+              "y": 150,
+              "color": "#e0564a",
+              "label": "scope added"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lead-cycle",
+      "text": "Two more, borrowed from Lean. Lead time is the whole journey — from the moment an idea lands in the backlog to the moment it's released. Cycle time is narrower — from when a Developer actually starts working on it to when it's Done. If your cycle time is short but your lead time is huge, your problem isn't building — it's everything queued before you start. That's a powerful clue for a Retrospective.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "lead",
+              "x": 60,
+              "y": 150,
+              "w": 220,
+              "h": 70,
+              "text": "Lead time: idea → released",
+              "color": "grey"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "cycle",
+              "x": 340,
+              "y": 150,
+              "w": 240,
+              "h": 70,
+              "text": "Cycle time: work started → Done",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "lead",
+              "to": "cycle",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Metrics knowledge check — velocity planning",
+    "items": [
+      {
+        "type": "velocity",
+        "limit": 30,
+        "prompt": "Drag task cards into the Sprint Backlog without exceeding the team's average velocity of 30 Story Points.",
+        "cards": [
+          {
+            "label": "Site search",
+            "pts": 13
+          },
+          {
+            "label": "Shopping cart",
+            "pts": 8
+          },
+          {
+            "label": "User account",
+            "pts": 5
+          },
+          {
+            "label": "Bank integration",
+            "pts": 21
+          }
+        ],
+        "feedback": {
+          "ok": "Nice — within your velocity of 30.",
+          "over": "Careful — over 30 points. Committing beyond your average velocity risks overloading the team and missing the goal.",
+          "under": "That fits, but you may have room for a little more value."
+        }
+      }
+    ]
+  }
+}

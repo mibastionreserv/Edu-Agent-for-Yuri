@@ -1,0 +1,112 @@
+{
+  "avatars": [
+    {
+      "id": "mira",
+      "name": {
+        "en": "Mira",
+        "de": "Mira",
+        "it": "Mira",
+        "el": "Mira"
+      },
+      "role": {
+        "en": "Your Scrum coach",
+        "de": "Deine Scrum-Trainerin",
+        "it": "La tua coach Scrum",
+        "el": "Η εκπαιδεύτριά σου Scrum"
+      },
+      "desc": {
+        "en": "Warm, concise and practical. Mira narrates the course and draws every idea on the whiteboard.",
+        "de": "Warm, prägnant und praxisnah. Mira erzählt den Kurs und zeichnet jede Idee ans Whiteboard.",
+        "it": "Calorosa, concisa e pratica. Mira racconta il corso e disegna ogni concetto sulla lavagna.",
+        "el": "Ζεστή, περιεκτική και πρακτική. Η Mira αφηγείται το μάθημα και σχεδιάζει κάθε ιδέα στον πίνακα."
+      },
+      "voice": {
+        "en": "en-US",
+        "de": "de-DE",
+        "it": "it-IT",
+        "el": "el-GR"
+      }
+    },
+    {
+      "id": "amara",
+      "name": {
+        "en": "Amara",
+        "de": "Amara",
+        "it": "Amara",
+        "el": "Amara"
+      },
+      "role": {
+        "en": "The Mentor",
+        "de": "Die Mentorin",
+        "it": "La mentore",
+        "el": "Η μέντορας"
+      },
+      "desc": {
+        "en": "Warm and methodical. A Black trainer with voluminous curly hair.",
+        "de": "Warm und methodisch. Eine schwarze Trainerin mit voluminösem Lockenhaar.",
+        "it": "Calorosa e metodica. Una formatrice nera con voluminosi capelli ricci.",
+        "el": "Ζεστή και μεθοδική. Μια μαύρη εκπαιδεύτρια με πλούσια σγουρά μαλλιά."
+      },
+      "voice": {
+        "en": "en-US",
+        "de": "de-DE",
+        "it": "it-IT",
+        "el": "el-GR"
+      }
+    },
+    {
+      "id": "daniel",
+      "name": {
+        "en": "Daniel",
+        "de": "Daniel",
+        "it": "Daniel",
+        "el": "Daniel"
+      },
+      "role": {
+        "en": "The Coach",
+        "de": "Der Coach",
+        "it": "Il coach",
+        "el": "Ο προπονητής"
+      },
+      "desc": {
+        "en": "Calm and precise. A White trainer with a neat short haircut.",
+        "de": "Ruhig und präzise. Ein weißer Trainer mit ordentlichem Kurzhaarschnitt.",
+        "it": "Calmo e preciso. Un formatore bianco con un taglio corto ordinato.",
+        "el": "Ήρεμος και ακριβής. Ένας λευκός εκπαιδευτής με κοντό, τακτοποιημένο κούρεμα."
+      },
+      "voice": {
+        "en": "en-GB",
+        "de": "de-DE",
+        "it": "it-IT",
+        "el": "el-GR"
+      }
+    },
+    {
+      "id": "meilin",
+      "name": {
+        "en": "Mei-Lin",
+        "de": "Mei-Lin",
+        "it": "Mei-Lin",
+        "el": "Mei-Lin"
+      },
+      "role": {
+        "en": "The Guide",
+        "de": "Die Begleiterin",
+        "it": "La guida",
+        "el": "Η οδηγός"
+      },
+      "desc": {
+        "en": "Clear and energetic. A Chinese trainer with a ponytail.",
+        "de": "Klar und energisch. Eine chinesische Trainerin mit Pferdeschwanz.",
+        "it": "Chiara ed energica. Una formatrice cinese con la coda di cavallo.",
+        "el": "Σαφής και ενεργητική. Μια Κινέζα εκπαιδεύτρια με αλογοουρά."
+      },
+      "voice": {
+        "en": "en-US",
+        "de": "de-DE",
+        "it": "it-IT",
+        "el": "el-GR"
+      }
+    }
+  ]
+}

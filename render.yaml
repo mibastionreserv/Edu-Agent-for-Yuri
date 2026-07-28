@@ -1,0 +1,39 @@
+# Render Blueprint — deploys ScrumStage as ONE web service + a managed Postgres.
+# Everything runs on Render's free tier (good for public testing).
+#
+# How to use:
+#   1. Push this folder to a GitHub repo.
+#   2. Render Dashboard -> New -> Blueprint -> pick the repo -> Apply.
+# See DEPLOY.md for the full walkthrough.
+
+databases:
+  - name: scrumstage-db
+    plan: free            # 1 GB, free for 30 days (then upgrade to keep data)
+    databaseName: scrumstage
+    user: scrum
+
+services:
+  - type: web
+    name: scrumstage
+    runtime: docker
+    plan: free            # single free web service; sleeps after 15 min idle
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Internal connection string from the managed database above (no SSL needed).
+      - key: DATABASE_URL
+        fromDatabase:
+          name: scrumstage-db
+          property: connectionString
+      # Auth signing secret — Render generates a strong random value once.
+      - key: JWT_SECRET
+        generateValue: true
+      # Course content is baked into the image at this path.
+      - key: CONTENT_DIR
+        value: /app/course-content
+      - key: NODE_ENV
+        value: production
+      # NOTE: PORT is injected automatically by Render; the app reads it.
+      # To enable generative LLM answers later, add LLM_BASE_URL / LLM_API_KEY / LLM_MODEL here.

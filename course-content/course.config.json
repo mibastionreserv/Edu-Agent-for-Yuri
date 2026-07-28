@@ -1,0 +1,37 @@
+{
+  "courseId": "practical-scrum",
+  "version": "1.0.0",
+  "title": {
+    "en": "Practical Scrum",
+    "de": "Scrum in der Praxis",
+    "it": "Scrum pratico",
+    "el": "Πρακτικό Scrum"
+  },
+  "defaultLanguage": "en",
+  "supportedLanguages": [
+    "en",
+    "de",
+    "it",
+    "el"
+  ],
+  "availableAvatars": [
+    "mira",
+    "amara",
+    "daniel",
+    "meilin"
+  ],
+  "moduleSequence": [
+    "m1-roles",
+    "m2-events",
+    "m3-metrics",
+    "m4-artifacts",
+    "m5-capstone"
+  ],
+  "playback": {
+    "autoAdvanceSegments": true,
+    "checkInForQuestionsAfterEachSegment": true,
+    "questionSilenceTimeoutSeconds": 8,
+    "allowJumpToModule": true,
+    "defaultSpeed": 1.0
+  }
+}

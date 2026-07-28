@@ -1,0 +1,183 @@
+{
+  "moduleId": "m2-events",
+  "language": "el",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "the-sprint",
+      "text": "Όλα στο Scrum ακολουθούν έναν ρυθμό: το Sprint. Σκέψου το ως ένα σταθερό κουτί χρόνου — έναν μήνα ή λιγότερο, και οι περισσότερες ομάδες επιλέγουν δύο εβδομάδες. Μόλις τελειώσει ένα Sprint, ξεκινά το επόμενο, χωρίς κενά. Και να ο χρυσός κανόνας, χάραξέ τον: η διάρκεια ενός Sprint είναι σταθερή. Δεν το επεκτείνεις επειδή η δουλειά δεν τελείωσε. Σε λίγο θα δούμε τι ακριβώς γίνεται με την ημιτελή δουλειά.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "sprint",
+              "x": 170,
+              "y": 150,
+              "w": 330,
+              "h": 90,
+              "text": "Το Sprint — ένα σταθερό κουτί, έναν μήνα ή λιγότερο",
+              "color": "blue"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "rule",
+              "x": 190,
+              "y": 280,
+              "w": 290,
+              "h": 70,
+              "text": "Χρυσός κανόνας: ποτέ επέκταση",
+              "color": "red"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "the-events",
+      "text": "Μέσα σε κάθε Sprint υπάρχουν τέσσερα γεγονότα. Ξεκινά με το Sprint Planning, όπου η ομάδα απαντά σε τρεις ερωτήσεις: Γιατί — ο Sprint Goal μας· Τι — ποια στοιχεία του Product Backlog παίρνουμε· και Πώς — το σχέδιό μας για να τα ολοκληρώσουμε. Από το Planning προκύπτουν ένας Sprint Goal και ένα Sprint Backlog. Κάθε εργάσιμη μέρα οι Developers κάνουν ένα Daily Scrum δεκαπέντε λεπτών — όχι αναφορά σε αφεντικό, αλλά η ομάδα συντονίζεται για την πρόοδο προς τον Sprint Goal. Κοντά στο τέλος έρχεται το Sprint Review, όπου η ομάδα δείχνει το λειτουργικό Increment στους stakeholders και συνεργάζεται μαζί τους για το τι θα γίνει μετά· αυτό αναδιαμορφώνει το Product Backlog. Τέλος, η Αναδρομή: η ομάδα κοιτά πώς δούλεψε και επιλέγει μία ή δύο συγκεκριμένες βελτιώσεις. Μετά ο κύκλος ξεκινά ξανά.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "pb",
+              "x": 30,
+              "y": 205,
+              "w": 130,
+              "h": 70,
+              "text": "Product Backlog",
+              "color": "grey"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "plan",
+              "x": 190,
+              "y": 95,
+              "w": 170,
+              "h": 80,
+              "text": "Sprint Planning → Goal + Backlog",
+              "color": "blue"
+            },
+            {
+              "t": "arrow",
+              "from": "pb",
+              "to": "plan",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "loop",
+              "id": "daily",
+              "x": 390,
+              "y": 235,
+              "r": 58,
+              "label": "Daily Scrum · 15 λεπτά"
+            },
+            {
+              "t": "arrow",
+              "from": "plan",
+              "to": "daily",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "review",
+              "x": 510,
+              "y": 95,
+              "w": 150,
+              "h": 80,
+              "text": "Sprint Review → Increment",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "daily",
+              "to": "review",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "retro",
+              "x": 510,
+              "y": 300,
+              "w": 150,
+              "h": 80,
+              "text": "Αναδρομή → 1–2 βελτιώσεις",
+              "color": "orange"
+            },
+            {
+              "t": "arrow",
+              "from": "review",
+              "to": "retro",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "arrow",
+              "from": "retro",
+              "to": "plan",
+              "color": "#2fa36b",
+              "label": "επόμενο Sprint"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Έλεγχος γνώσεων: γεγονότα",
+    "items": [
+      {
+        "type": "order",
+        "prompt": "Βάλε τα γεγονότα Scrum στη σειρά που εκτελούνται σε ένα Sprint.",
+        "items": [
+          "Sprint Planning",
+          "Daily Scrum",
+          "Sprint Review",
+          "Αναδρομή"
+        ]
+      },
+      {
+        "type": "tf",
+        "prompt": "Σωστό ή λάθος;",
+        "statements": [
+          {
+            "text": "Ένα Sprint μπορεί να επεκταθεί αν η δουλειά δεν τελείωσε.",
+            "answer": false
+          },
+          {
+            "text": "Το Daily Scrum είναι αναφορά στον μάνατζερ.",
+            "answer": false
+          },
+          {
+            "text": "Το Sprint Review προσαρμόζει το Product Backlog.",
+            "answer": true
+          }
+        ]
+      }
+    ]
+  }
+}

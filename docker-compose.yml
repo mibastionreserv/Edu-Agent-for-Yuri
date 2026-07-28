@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scrum}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scrum_local_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-scrumstage}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scrum} -d ${POSTGRES_DB:-scrumstage}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-scrum}:${POSTGRES_PASSWORD:-scrum_local_dev}@db:5432/${POSTGRES_DB:-scrumstage}
+      # Local dev default only. Override JWT_SECRET in the environment for any real deployment.
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      CONTENT_DIR: /course-content
+      PORT: 4000
+    volumes:
+      # Course content is mounted read-only from the repo (files, not database rows).
+      - ./course-content:/course-content:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

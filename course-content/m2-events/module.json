@@ -1,0 +1,32 @@
+{
+  "id": "m2-events",
+  "order": 2,
+  "estimatedMinutes": 11,
+  "title": {
+    "en": "Scrum Events (Ceremonies) & Interactions",
+    "de": "Scrum-Ereignisse (Zeremonien) & Zusammenspiel",
+    "it": "Eventi Scrum (cerimonie) e interazioni",
+    "el": "Γεγονότα Scrum (τελετές) & αλληλεπιδράσεις"
+  },
+  "summary": {
+    "en": "The Sprint as the container, and the four events inside it — purpose, participants, time-boxes.",
+    "de": "Der Sprint als Container und die vier Ereignisse darin — Zweck, Beteiligte, Timeboxes.",
+    "it": "Lo Sprint come contenitore e i quattro eventi al suo interno — scopo, partecipanti, time-box.",
+    "el": "Το Sprint ως δοχείο και τα τέσσερα γεγονότα μέσα του — σκοπός, συμμετέχοντες, χρονικά όρια."
+  },
+  "scripts": {
+    "en": "scripts/m2-events.en.script.json",
+    "de": "scripts/m2-events.de.script.json",
+    "it": "scripts/m2-events.it.script.json",
+    "el": "scripts/m2-events.el.script.json"
+  },
+  "knowledgeBase": {
+    "en": "knowledge/m2-events.en.md",
+    "de": "knowledge/m2-events.de.md",
+    "it": "knowledge/m2-events.it.md",
+    "el": "knowledge/m2-events.el.md"
+  },
+  "prerequisites": [
+    "m1-roles"
+  ]
+}

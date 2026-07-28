@@ -1,0 +1,276 @@
+{
+  "moduleId": "m5-capstone",
+  "language": "en",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "the-thread",
+      "text": "Let's zoom out. Everything you've learned serves one engine: empiricism — transparency, inspection, adaptation. The artifacts make work transparent. The events are our regular inspections. And every event ends by adapting something: Planning adapts the plan, the Daily adapts the day, the Review adapts the Product Backlog, and the Retrospective adapts how we work. That's the whole machine.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "pillars",
+              "x": 120,
+              "y": 110,
+              "w": 400,
+              "h": 70,
+              "text": "Transparency · Inspection · Adaptation",
+              "color": "green"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "note",
+              "x": 120,
+              "y": 210,
+              "text": "Artifacts → transparency · Events → inspection · Outcomes → adaptation"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "text": "Now let me protect you from the traps I see most often. Extending a Sprint because work isn't done — no; the box is fixed. Running the Daily as a status report to a manager — no; it's the Developers' re-plan. Treating the Scrum Master as a project manager or note-taker — no; they're a coach. A Product Owner who is really a committee — no; one person decides. No Definition of Done — then 'Done' means nothing. Velocity as a target — and your data starts lying. Skipping the Retrospective — and you stop improving. Spot these, and you're already ahead of most teams.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "ap1",
+              "x": 40,
+              "y": 110,
+              "w": 250,
+              "h": 60,
+              "text": "Extending the Sprint",
+              "color": "red"
+            },
+            {
+              "t": "card",
+              "id": "fix1",
+              "x": 360,
+              "y": 110,
+              "w": 260,
+              "h": 60,
+              "text": "Fixed box; move work to backlog",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "ap1",
+              "to": "fix1",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "ap2",
+              "x": 40,
+              "y": 200,
+              "w": 250,
+              "h": 60,
+              "text": "Daily as manager status",
+              "color": "red"
+            },
+            {
+              "t": "card",
+              "id": "fix2",
+              "x": 360,
+              "y": 200,
+              "w": 260,
+              "h": 60,
+              "text": "Developers' 15-min re-plan",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "ap2",
+              "to": "fix2",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "ap3",
+              "x": 40,
+              "y": 290,
+              "w": 250,
+              "h": 60,
+              "text": "Velocity as a target",
+              "color": "red"
+            },
+            {
+              "t": "card",
+              "id": "fix3",
+              "x": 360,
+              "y": 290,
+              "w": 260,
+              "h": 60,
+              "text": "Forecast for the team only",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "ap3",
+              "to": "fix3",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "end-to-end",
+      "text": "Let's try it together. Imagine a two-week Sprint. On day one you set a Sprint Goal and pick items within your velocity. Each morning, a fifteen-minute Daily keeps you honest against a burndown. Something's blocked — the Scrum Master clears it. At the end, you show a Done, usable Increment at the Review and gather feedback, then run a Retrospective and pick one improvement. Do that, Sprint after Sprint, living the five values — and that's Scrum working. Ready for the final check?",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "note",
+              "x": 110,
+              "y": 150,
+              "text": "Goal → pick within velocity → Daily + burndown → Review → Retrospective → repeat"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Final assessment",
+    "items": [
+      {
+        "type": "mcq",
+        "prompt": "Scrum is a…",
+        "options": [
+          "framework",
+          "methodology",
+          "standard"
+        ],
+        "answer": 0
+      },
+      {
+        "type": "mcq",
+        "prompt": "Who owns the Product Backlog?",
+        "options": [
+          "Scrum Master",
+          "Product Owner",
+          "Developers"
+        ],
+        "answer": 1
+      },
+      {
+        "type": "mcq",
+        "prompt": "Maximum length of a Sprint?",
+        "options": [
+          "One month or less",
+          "Exactly six weeks",
+          "No limit"
+        ],
+        "answer": 0
+      },
+      {
+        "type": "mcq",
+        "prompt": "The Daily Scrum lasts…",
+        "options": [
+          "15 minutes",
+          "1 hour",
+          "As long as needed"
+        ],
+        "answer": 0
+      },
+      {
+        "type": "mcq",
+        "prompt": "Commitment of the Sprint Backlog?",
+        "options": [
+          "Product Goal",
+          "Sprint Goal",
+          "Definition of Done"
+        ],
+        "answer": 1
+      },
+      {
+        "type": "mcq",
+        "prompt": "Commitment of the Increment?",
+        "options": [
+          "Definition of Done",
+          "Sprint Goal",
+          "Product Goal"
+        ],
+        "answer": 0
+      },
+      {
+        "type": "mcq",
+        "prompt": "An unfinished item at Sprint end…",
+        "options": [
+          "Returns to the Product Backlog",
+          "Ships as-is",
+          "Deletes itself"
+        ],
+        "answer": 0
+      },
+      {
+        "type": "tf",
+        "prompt": "True or false?",
+        "statements": [
+          {
+            "text": "Velocity may be used to compare two teams.",
+            "answer": false
+          },
+          {
+            "text": "The Sprint Review only demos; it changes nothing.",
+            "answer": false
+          }
+        ]
+      },
+      {
+        "type": "order",
+        "prompt": "Order the five events (Planning → Retro).",
+        "items": [
+          "Sprint Planning",
+          "Daily Scrum",
+          "Sprint Review",
+          "Retrospective"
+        ]
+      },
+      {
+        "type": "velocity",
+        "limit": 30,
+        "prompt": "Applied: fill a Sprint Backlog within velocity 30.",
+        "cards": [
+          {
+            "label": "Search",
+            "pts": 13
+          },
+          {
+            "label": "Cart",
+            "pts": 8
+          },
+          {
+            "label": "Account",
+            "pts": 5
+          },
+          {
+            "label": "Bank",
+            "pts": 21
+          }
+        ],
+        "feedback": {
+          "ok": "Within velocity — nicely done.",
+          "over": "Over 30 — that overloads the team.",
+          "under": "Fits — maybe room for more."
+        }
+      }
+    ]
+  }
+}

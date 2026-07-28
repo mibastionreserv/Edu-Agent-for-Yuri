@@ -1,0 +1,276 @@
+{
+  "moduleId": "m5-capstone",
+  "language": "de",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "the-thread",
+      "text": "Zoomen wir raus. Alles, was du gelernt hast, dient einem Motor: der Empirie — Transparenz, Überprüfung, Anpassung. Die Artefakte machen Arbeit transparent. Die Ereignisse sind unsere regelmäßigen Überprüfungen. Und jedes Ereignis endet damit, etwas anzupassen: Planning passt den Plan an, das Daily den Tag, der Review das Product Backlog und die Retrospektive, wie wir arbeiten. Das ist die ganze Maschine.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "pillars",
+              "x": 120,
+              "y": 110,
+              "w": 400,
+              "h": 70,
+              "text": "Transparenz · Überprüfung · Anpassung",
+              "color": "green"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "note",
+              "x": 120,
+              "y": 210,
+              "text": "Artefakte → Transparenz · Ereignisse → Überprüfung · Ergebnisse → Anpassung"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "text": "Nun schütze ich dich vor den häufigsten Fallen. Einen Sprint verlängern, weil Arbeit unfertig ist — nein; die Box ist fix. Das Daily als Statusbericht an einen Manager führen — nein; es ist die Neuplanung der Developer. Den Scrum Master als Projektleiter oder Protokollführer behandeln — nein; er ist Coach. Eine Product Ownerin, die eigentlich ein Komitee ist — nein; eine Person entscheidet. Keine Definition of Done — dann heißt 'fertig' nichts. Velocity als Ziel — und deine Daten beginnen zu lügen. Die Retrospektive auslassen — und du hörst auf, dich zu verbessern. Erkenne diese, und du bist schon vielen Teams voraus.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "ap1",
+              "x": 40,
+              "y": 110,
+              "w": 250,
+              "h": 60,
+              "text": "Den Sprint verlängern",
+              "color": "red"
+            },
+            {
+              "t": "card",
+              "id": "fix1",
+              "x": 360,
+              "y": 110,
+              "w": 260,
+              "h": 60,
+              "text": "Feste Box; Arbeit ins Backlog",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "ap1",
+              "to": "fix1",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "ap2",
+              "x": 40,
+              "y": 200,
+              "w": 250,
+              "h": 60,
+              "text": "Daily als Manager-Status",
+              "color": "red"
+            },
+            {
+              "t": "card",
+              "id": "fix2",
+              "x": 360,
+              "y": 200,
+              "w": 260,
+              "h": 60,
+              "text": "15-Min-Neuplanung der Developer",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "ap2",
+              "to": "fix2",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "ap3",
+              "x": 40,
+              "y": 290,
+              "w": 250,
+              "h": 60,
+              "text": "Velocity als Ziel",
+              "color": "red"
+            },
+            {
+              "t": "card",
+              "id": "fix3",
+              "x": 360,
+              "y": 290,
+              "w": 260,
+              "h": 60,
+              "text": "Prognose nur fürs Team",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "ap3",
+              "to": "fix3",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "end-to-end",
+      "text": "Probieren wir es zusammen. Stell dir einen Zwei-Wochen-Sprint vor. An Tag eins setzt du ein Sprint-Ziel und wählst Einträge innerhalb deiner Velocity. Jeden Morgen hält ein fünfzehnminütiges Daily dich ehrlich am Burndown. Etwas ist blockiert — der Scrum Master beseitigt es. Am Ende zeigst du im Review ein fertiges, nutzbares Increment und sammelst Feedback, dann eine Retrospektive und eine Verbesserung. Mach das, Sprint für Sprint, und lebe die fünf Werte — das ist Scrum in Aktion. Bereit für den Abschlusstest?",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "note",
+              "x": 110,
+              "y": 150,
+              "text": "Ziel → innerhalb Velocity wählen → Daily + Burndown → Review → Retrospektive → wiederholen"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Abschlusstest",
+    "items": [
+      {
+        "type": "mcq",
+        "prompt": "Scrum ist ein…",
+        "options": [
+          "Rahmenwerk",
+          "Methodik",
+          "Standard"
+        ],
+        "answer": 0
+      },
+      {
+        "type": "mcq",
+        "prompt": "Wem gehört das Product Backlog?",
+        "options": [
+          "Scrum Master",
+          "Product Owner",
+          "Developer"
+        ],
+        "answer": 1
+      },
+      {
+        "type": "mcq",
+        "prompt": "Maximale Länge eines Sprints?",
+        "options": [
+          "Ein Monat oder weniger",
+          "Genau sechs Wochen",
+          "Kein Limit"
+        ],
+        "answer": 0
+      },
+      {
+        "type": "mcq",
+        "prompt": "Das Daily Scrum dauert…",
+        "options": [
+          "15 Minuten",
+          "1 Stunde",
+          "So lange wie nötig"
+        ],
+        "answer": 0
+      },
+      {
+        "type": "mcq",
+        "prompt": "Commitment des Sprint Backlogs?",
+        "options": [
+          "Produktziel",
+          "Sprint-Ziel",
+          "Definition of Done"
+        ],
+        "answer": 1
+      },
+      {
+        "type": "mcq",
+        "prompt": "Commitment des Increments?",
+        "options": [
+          "Definition of Done",
+          "Sprint-Ziel",
+          "Produktziel"
+        ],
+        "answer": 0
+      },
+      {
+        "type": "mcq",
+        "prompt": "Ein unfertiger Eintrag am Sprintende…",
+        "options": [
+          "Geht zurück ins Product Backlog",
+          "Wird so ausgeliefert",
+          "Löscht sich selbst"
+        ],
+        "answer": 0
+      },
+      {
+        "type": "tf",
+        "prompt": "Richtig oder falsch?",
+        "statements": [
+          {
+            "text": "Velocity darf zwei Teams vergleichen.",
+            "answer": false
+          },
+          {
+            "text": "Der Sprint Review zeigt nur; er ändert nichts.",
+            "answer": false
+          }
+        ]
+      },
+      {
+        "type": "order",
+        "prompt": "Ordne die Ereignisse (Planning → Retro).",
+        "items": [
+          "Sprint Planning",
+          "Daily Scrum",
+          "Sprint Review",
+          "Retrospektive"
+        ]
+      },
+      {
+        "type": "velocity",
+        "limit": 30,
+        "prompt": "Angewandt: fülle ein Sprint Backlog innerhalb Velocity 30.",
+        "cards": [
+          {
+            "label": "Suche",
+            "pts": 13
+          },
+          {
+            "label": "Warenkorb",
+            "pts": 8
+          },
+          {
+            "label": "Konto",
+            "pts": 5
+          },
+          {
+            "label": "Bank",
+            "pts": 21
+          }
+        ],
+        "feedback": {
+          "ok": "Innerhalb der Velocity — gut.",
+          "over": "Über 30 — das überlastet das Team.",
+          "under": "Passt — vielleicht Platz für mehr."
+        }
+      }
+    ]
+  }
+}

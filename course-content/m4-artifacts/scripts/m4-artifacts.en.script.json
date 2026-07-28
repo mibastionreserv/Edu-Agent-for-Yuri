@@ -1,0 +1,178 @@
+{
+  "moduleId": "m4-artifacts",
+  "language": "en",
+  "outcomes": [],
+  "segments": [
+    {
+      "id": "three-artifacts",
+      "text": "We've talked about who does the work and when. Now: what the work looks like as it moves. Scrum has three artifacts, and each carries a promise — a commitment. Start with the Product Backlog: the single, ordered list of everything the product might need, owned by the Product Owner. Its commitment is the Product Goal. When we start a Sprint, the Developers pull items into the Sprint Backlog — the Sprint Goal, the chosen items, and the plan. It belongs to the Developers, and its commitment is that Sprint Goal. As they build, they produce an Increment — a working, usable piece of product that adds to everything before. Its commitment is the Definition of Done.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "pb",
+              "x": 30,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Product Backlog",
+              "color": "grey"
+            },
+            {
+              "t": "note",
+              "x": 30,
+              "y": 160,
+              "text": "Commitment: Product Goal"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "sb",
+              "x": 250,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Sprint Backlog",
+              "color": "blue"
+            },
+            {
+              "t": "note",
+              "x": 250,
+              "y": 160,
+              "text": "Commitment: Sprint Goal"
+            },
+            {
+              "t": "arrow",
+              "from": "pb",
+              "to": "sb",
+              "color": "#8892b0"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "incr",
+              "x": 470,
+              "y": 190,
+              "w": 160,
+              "h": 70,
+              "text": "Increment",
+              "color": "green"
+            },
+            {
+              "t": "note",
+              "x": 470,
+              "y": 160,
+              "text": "Commitment: Definition of Done"
+            },
+            {
+              "t": "arrow",
+              "from": "sb",
+              "to": "incr",
+              "color": "#8892b0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "definition-of-done",
+      "text": "Here's the gate that keeps quality honest: the Definition of Done. It's the shared checklist of what 'finished' truly means — tested, integrated, meeting our standards. The Scrum Team owns it; if the organisation has a shared standard you start there and can make it stricter, never looser. So what if an item isn't Done? Then it is not part of the Increment, we don't show it as finished at the Review, and it goes back to the Product Backlog for the Product Owner to reconsider. 'Almost done' doesn't exist in Scrum — it's Done or it's not.",
+      "steps": [
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "dod",
+              "x": 220,
+              "y": 95,
+              "w": 220,
+              "h": 80,
+              "text": "Definition of Done — the quality gate",
+              "color": "orange"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "done",
+              "x": 90,
+              "y": 280,
+              "w": 200,
+              "h": 70,
+              "text": "Meets DoD → part of the Increment",
+              "color": "green"
+            },
+            {
+              "t": "arrow",
+              "from": "dod",
+              "to": "done",
+              "color": "#2fa36b"
+            }
+          ]
+        },
+        {
+          "draw": [
+            {
+              "t": "card",
+              "id": "notdone",
+              "x": 360,
+              "y": 280,
+              "w": 230,
+              "h": 70,
+              "text": "Not Done → back to Product Backlog",
+              "color": "red"
+            },
+            {
+              "t": "arrow",
+              "from": "dod",
+              "to": "notdone",
+              "color": "#e0564a"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "check": {
+    "title": "Artifacts knowledge check",
+    "items": [
+      {
+        "type": "match",
+        "prompt": "Match each artifact to its commitment.",
+        "pairs": [
+          {
+            "left": "Product Backlog",
+            "right": "Product Goal"
+          },
+          {
+            "left": "Sprint Backlog",
+            "right": "Sprint Goal"
+          },
+          {
+            "left": "Increment",
+            "right": "Definition of Done"
+          }
+        ]
+      },
+      {
+        "type": "mcq",
+        "prompt": "An item is '90% done' at Sprint end. What happens?",
+        "options": [
+          "It ships anyway as a partial Increment",
+          "The Sprint is extended two days to finish it",
+          "It is not part of the Increment and returns to the Product Backlog"
+        ],
+        "answer": 2
+      }
+    ]
+  }
+}

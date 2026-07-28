@@ -1,0 +1,32 @@
+{
+  "id": "m3-metrics",
+  "order": 3,
+  "estimatedMinutes": 10,
+  "title": {
+    "en": "Scrum Team Performance Metrics",
+    "de": "Leistungskennzahlen im Scrum-Team",
+    "it": "Metriche di performance del team Scrum",
+    "el": "Μετρικές απόδοσης ομάδας Scrum"
+  },
+  "summary": {
+    "en": "Velocity, burndown, and lead/cycle time — how to read them and how not to misuse them.",
+    "de": "Velocity, Burndown und Durchlauf-/Zykluszeit — richtig lesen und nicht missbrauchen.",
+    "it": "Velocity, burndown e lead/cycle time — come leggerli e come non abusarne.",
+    "el": "Velocity, burndown και lead/cycle time — πώς διαβάζονται και πώς να μην τα κακομεταχειρίζεσαι."
+  },
+  "scripts": {
+    "en": "scripts/m3-metrics.en.script.json",
+    "de": "scripts/m3-metrics.de.script.json",
+    "it": "scripts/m3-metrics.it.script.json",
+    "el": "scripts/m3-metrics.el.script.json"
+  },
+  "knowledgeBase": {
+    "en": "knowledge/m3-metrics.en.md",
+    "de": "knowledge/m3-metrics.de.md",
+    "it": "knowledge/m3-metrics.it.md",
+    "el": "knowledge/m3-metrics.el.md"
+  },
+  "prerequisites": [
+    "m2-events"
+  ]
+}
