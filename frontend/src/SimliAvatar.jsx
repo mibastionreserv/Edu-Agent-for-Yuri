@@ -77,10 +77,14 @@ const SimliAvatar = forwardRef(function SimliAvatar({ size = 170, onStatusChange
               setStatus('live');
               clearInterval(frameWatchRef.current);
               frameWatchRef.current = null;
-            } else if (waited >= 20000) {
-              // Nothing after 20s: uncover the element regardless so the
-              // learner is never left staring at a permanent "Connecting…".
-              setStatus('live');
+            } else if (waited >= 15000) {
+              // No frames after 15s means the media path never came up
+              // (commonly a network that permits the signalling handshake
+              // but blocks the WebRTC media itself). Report failure so the
+              // caller can show the photo presenter — a black rectangle is
+              // the one outcome that is worse than not using video at all.
+              setStatus('error');
+              setError('Live video could not be established.');
               clearInterval(frameWatchRef.current);
               frameWatchRef.current = null;
             }

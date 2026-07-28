@@ -928,7 +928,7 @@ function Classroom({
                 the video here is the ONLY rendering — all animation comes
                 from the avatar service itself, never a photo or CSS mouth. */}
             <div className="presenter-dock" ref={presenterDockRef}>
-              {simliFaceId ? (
+              {simliFaceId && !simliFailed ? (
                 <SimliAvatar
                   ref={simliRef}
                   size={150}

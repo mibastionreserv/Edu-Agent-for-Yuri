@@ -252,8 +252,12 @@ export function createApp(pool) {
       return res.status(400).json({ error: 'text is required.' });
     }
     try {
-      const wav = await synthesizeSpeech(text.trim(), { voice: voice || undefined });
+      const wav = await synthesizeSpeech(text.trim(), { voice: voice || undefined, pool });
       res.set('Content-Type', 'audio/wav');
+      // Narration for a given line never changes, so let the browser keep it
+      // too — a re-listen or a back-and-forth between segments then costs no
+      // request at all, on top of the server-side cache.
+      res.set('Cache-Control', 'private, max-age=86400');
       return res.send(wav);
     } catch (err) {
       const detail = (err && err.message) || 'unknown';
