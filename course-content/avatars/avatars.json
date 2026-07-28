@@ -28,24 +28,24 @@
       }
     },
     {
-      "id": "amara",
+      "id": "yuri",
       "name": {
-        "en": "Amara",
-        "de": "Amara",
-        "it": "Amara",
-        "el": "Amara"
+        "en": "Yuri",
+        "de": "Yuri",
+        "it": "Yuri",
+        "el": "Yuri"
       },
       "role": {
         "en": "The Mentor",
-        "de": "Die Mentorin",
-        "it": "La mentore",
-        "el": "Η μέντορας"
+        "de": "Der Mentor",
+        "it": "Il mentore",
+        "el": "Ο μέντορας"
       },
       "desc": {
-        "en": "Warm and methodical. A Black trainer with voluminous curly hair.",
-        "de": "Warm und methodisch. Eine schwarze Trainerin mit voluminösem Lockenhaar.",
-        "it": "Calorosa e metodica. Una formatrice nera con voluminosi capelli ricci.",
-        "el": "Ζεστή και μεθοδική. Μια μαύρη εκπαιδεύτρια με πλούσια σγουρά μαλλιά."
+        "en": "Warm and methodical. An experienced trainer with a friendly smile.",
+        "de": "Warm und methodisch. Ein erfahrener Trainer mit freundlichem Lächeln.",
+        "it": "Caloroso e metodico. Un formatore esperto dal sorriso cordiale.",
+        "el": "Ζεστός και μεθοδικός. Ένας έμπειρος εκπαιδευτής με φιλικό χαμόγελο."
       },
       "voice": {
         "en": "en-US",

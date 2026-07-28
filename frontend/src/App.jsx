@@ -50,7 +50,10 @@ const SIMLI_FACES = {
 // backend/src/tavus.js) — Tavus's own TTS + Phoenix engine handle voice
 // synthesis and lip-synced rendering, so there's no local audio pipeline for
 // this persona at all, unlike Simli/Mei-Lin.
-const TAVUS_PERSONAS = { amara: true };
+// 'amara' stays as an alias so previously saved progress (avatar_id) keeps
+// working — the persona is now presented as Yuri, matching the male Tavus
+// stock replica (r92debe21318) that actually renders the live video.
+const TAVUS_PERSONAS = { yuri: true, amara: true };
 
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it

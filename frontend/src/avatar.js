@@ -159,7 +159,11 @@ function mira(mouth, listening, px) {
     </g>`;
 }
 
-const RENDERERS = { mira, amara, daniel, meilin, alex };
+// yuri's card normally shows course-content/avatars/yuri.jpg (photo); the
+// drawn fallback reuses the male 'alex' sketch only if the photo fails.
+const RENDERERS = {
+  mira, amara, daniel, meilin, alex, yuri: alex,
+};
 
 export function avatarSVG(id, { mouth = false, state = 'idle', k = 'a' } = {}) {
   const listening = state === 'listening';

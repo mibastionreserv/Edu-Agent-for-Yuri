@@ -12,7 +12,7 @@ import { answerQuestion } from './qa.js';
 // wording reflects how closely the question relates to what is currently
 // being taught, then goes straight into the answer.
 const PERSONA_NAMES = {
-  mira: 'Mira', amara: 'Amara', daniel: 'Daniel', meilin: 'Mei-Lin',
+  mira: 'Mira', yuri: 'Yuri', amara: 'Yuri', daniel: 'Daniel', meilin: 'Mei-Lin',
 };
 
 export async function getAnswer({ question, lang, module, history = [], avatarId }) {
