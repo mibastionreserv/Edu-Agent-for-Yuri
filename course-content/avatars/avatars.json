@@ -15,10 +15,10 @@
         "el": "Η εκπαιδεύτριά σου Scrum"
       },
       "desc": {
-        "en": "Warm, concise and practical. Mira narrates the course and draws every idea on the whiteboard.",
-        "de": "Warm, prägnant und praxisnah. Mira erzählt den Kurs und zeichnet jede Idee ans Whiteboard.",
-        "it": "Calorosa, concisa e pratica. Mira racconta il corso e disegna ogni concetto sulla lavagna.",
-        "el": "Ζεστή, περιεκτική και πρακτική. Η Mira αφηγείται το μάθημα και σχεδιάζει κάθε ιδέα στον πίνακα."
+        "en": "A simple photo avatar.",
+        "de": "Ein einfacher Foto-Avatar.",
+        "it": "Un semplice avatar fotografico.",
+        "el": "Ένα απλό άβαταρ φωτογραφίας."
       },
       "voice": {
         "en": "en-US",
@@ -42,10 +42,10 @@
         "el": "Ο μέντορας"
       },
       "desc": {
-        "en": "Warm and methodical. An experienced trainer with a friendly smile.",
-        "de": "Warm und methodisch. Ein erfahrener Trainer mit freundlichem Lächeln.",
-        "it": "Caloroso e metodico. Un formatore esperto dal sorriso cordiale.",
-        "el": "Ζεστός και μεθοδικός. Ένας έμπειρος εκπαιδευτής με φιλικό χαμόγελο."
+        "en": "A realistic video avatar.",
+        "de": "Ein realistischer Video-Avatar.",
+        "it": "Un avatar video realistico.",
+        "el": "Ένα ρεαλιστικό βίντεο-άβαταρ."
       },
       "voice": {
         "en": "en-US",
@@ -69,10 +69,10 @@
         "el": "Ο προπονητής"
       },
       "desc": {
-        "en": "Calm and precise. A White trainer with a neat short haircut.",
-        "de": "Ruhig und präzise. Ein weißer Trainer mit ordentlichem Kurzhaarschnitt.",
-        "it": "Calmo e preciso. Un formatore bianco con un taglio corto ordinato.",
-        "el": "Ήρεμος και ακριβής. Ένας λευκός εκπαιδευτής με κοντό, τακτοποιημένο κούρεμα."
+        "en": "A simple 2D avatar.",
+        "de": "Ein einfacher 2D-Avatar.",
+        "it": "Un semplice avatar 2D.",
+        "el": "Ένα απλό 2D άβαταρ."
       },
       "voice": {
         "en": "en-GB",
@@ -96,10 +96,10 @@
         "el": "Η οδηγός"
       },
       "desc": {
-        "en": "Clear and energetic. A Chinese trainer with a ponytail.",
-        "de": "Klar und energisch. Eine chinesische Trainerin mit Pferdeschwanz.",
-        "it": "Chiara ed energica. Una formatrice cinese con la coda di cavallo.",
-        "el": "Σαφής και ενεργητική. Μια Κινέζα εκπαιδεύτρια με αλογοουρά."
+        "en": "A realistic 3D avatar.",
+        "de": "Ein realistischer 3D-Avatar.",
+        "it": "Un avatar 3D realistico.",
+        "el": "Ένα ρεαλιστικό 3D άβαταρ."
       },
       "voice": {
         "en": "en-US",
