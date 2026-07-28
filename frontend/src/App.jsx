@@ -28,11 +28,38 @@ function Toast({ msg }) {
   if (!msg) return null;
   return <div className="toast" role="status">{msg}</div>;
 }
+// Eye/mouth positions (% of the displayed avatar box, already corrected for
+// the object-fit:cover crop) for each photo avatar. Measured once per photo
+// with a face-landmark pass; add an entry here when a new photo is dropped in
+// course-content/avatars/ to get blinking + a talking mouth on it too.
+const PHOTO_LANDMARKS = {
+  mira: {
+    eyeY: 31, eyeLX: 40, eyeRX: 57.5, mouthX: 50, mouthY: 47,
+  },
+};
+
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
   // replaces the drawn SVG automatically, no code change needed per persona.
   const [photoFailed, setPhotoFailed] = useState(false);
+  const [blink, setBlink] = useState(false);
   const dims = { width: size, height: size * 1.15 };
+  const lm = PHOTO_LANDMARKS[id];
+
+  useEffect(() => {
+    if (!lm) return undefined;
+    let timeoutId;
+    const scheduleBlink = () => {
+      timeoutId = setTimeout(() => {
+        setBlink(true);
+        setTimeout(() => setBlink(false), 130);
+        scheduleBlink();
+      }, 2400 + Math.random() * 2800);
+    };
+    scheduleBlink();
+    return () => clearTimeout(timeoutId);
+  }, [lm]);
+
   if (!photoFailed) {
     return (
       <div
@@ -44,6 +71,25 @@ function Avatar({ id, mouth, state, size = 180 }) {
           alt={id}
           onError={() => setPhotoFailed(true)}
         />
+        {lm && (
+          <>
+            <span
+              className={`ap-blink ${blink ? 'on' : ''}`}
+              style={{ left: `${lm.eyeLX}%`, top: `${lm.eyeY}%` }}
+              aria-hidden="true"
+            />
+            <span
+              className={`ap-blink ${blink ? 'on' : ''}`}
+              style={{ left: `${lm.eyeRX}%`, top: `${lm.eyeY}%` }}
+              aria-hidden="true"
+            />
+            <span
+              className={`ap-mouth ${mouth ? 'open' : ''}`}
+              style={{ left: `${lm.mouthX}%`, top: `${lm.mouthY}%` }}
+              aria-hidden="true"
+            />
+          </>
+        )}
       </div>
     );
   }

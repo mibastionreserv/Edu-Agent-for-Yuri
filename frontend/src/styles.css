@@ -149,10 +149,19 @@ input{font-family:inherit}
 
 /* ---- Practical Scrum additions: avatar, rough.js board, knowledge check ---- */
 .avatar-svg{display:block}
-.avatar-photo{display:block;overflow:hidden;border-radius:14px;transition:transform .35s ease, box-shadow .2s ease}
+.avatar-photo{position:relative;overflow:hidden;border-radius:14px;transition:transform .35s ease, box-shadow .2s ease}
 .avatar-photo img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .avatar-photo.listening{transform:rotate(-4deg)}
 .avatar-photo.speaking{box-shadow:0 0 0 4px rgba(23,183,166,.4)}
+.avatar-photo.speaking img{animation:ap-bob .44s ease-in-out infinite}
+@keyframes ap-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(1.5%)}}
+.ap-blink{position:absolute;width:11%;height:12%;background:#d9a67e;border-radius:50%;
+  transform:translate(-50%,-60%) scaleY(0);transform-origin:center;transition:transform .07s ease;pointer-events:none}
+.ap-blink.on{transform:translate(-50%,-60%) scaleY(1)}
+.ap-mouth{position:absolute;width:15%;height:9%;border-radius:50%;pointer-events:none;
+  background:radial-gradient(ellipse at center, rgba(80,32,28,.85) 0%, rgba(80,32,28,.45) 55%, rgba(80,32,28,0) 75%);
+  filter:blur(1.5px);transform:translate(-50%,-30%) scaleY(.22);transform-origin:center;transition:transform .11s ease}
+.ap-mouth.open{transform:translate(-50%,-30%) scaleY(1)}
 .board-svg{width:100%;height:100%;min-height:300px;display:block}
 .board{display:flex}
 .cards{grid-template-columns:repeat(4,1fr);max-width:940px}
