@@ -360,7 +360,14 @@ function Classroom({
   // blocking loader — so when narration actually starts there is no avatar
   // delay at all, and the learner only ever sees the service-rendered live
   // video, never a static stand-in. Applies to both providers.
+  //
+  // MUST be keyed on `loading`, not run on mount: while the module is still
+  // loading the component early-returns a spinner, so the avatar components
+  // (and narrationAudioRef) do not exist yet — a mount-time pre-warm found
+  // null refs, silently did nothing, and the avatar never connected (the
+  // production "Connecting… forever, no conversation ever created" bug).
   useEffect(() => {
+    if (loading || !mod) return;
     if (simliFaceId) {
       const el = narrationAudioRef.current;
       if (!el) return;
@@ -384,7 +391,7 @@ function Classroom({
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loading]);
 
   // Broadcasts narration text to the live Tavus avatar and waits for Tavus's
   // own conversation.stopped_speaking event before resolving — that's the
