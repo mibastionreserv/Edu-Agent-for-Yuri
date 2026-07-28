@@ -324,12 +324,16 @@ function Classroom({
   // mouth opens exactly as loudly/quickly as the voice does, instead of the
   // old fixed 220ms open/close blink. Written straight to a CSS variable on
   // the presenter dock (no React re-renders at 60fps).
-  const mouthAnalyserRef = useRef(null);
   const presenterDockRef = useRef(null);
   // True once the first TTS line for a photo persona has been fetched —
   // the full-screen loader is shown only for that first load, mirroring how
   // live avatars show it only for their first connect.
   const photoTtsWarmedRef = useRef(false);
+  // Set once server TTS has failed for this session. From then on the whole
+  // lesson uses the browser voice consistently instead of retrying per line
+  // — silence is unacceptable, but so is flipping between two different
+  // voices mid-lesson. One voice, start to finish, whichever one is usable.
+  const ttsDownRef = useRef(false);
   function ensureLiveAvatarFromElement(el) {
     if (!simliFaceId) return Promise.resolve(false);
     if (simliConnectReadyRef.current) return simliConnectReadyRef.current;
@@ -491,28 +495,6 @@ function Classroom({
     const el = narrationAudioRef.current;
     if (!el) return false;
 
-    // Photo personas: route the element through source → analyser →
-    // speakers. The analyser feeds the amplitude-driven mouth (below); the
-    // audio stays fully audible locally (unlike the Simli routing, which
-    // deliberately bypasses the speakers). Built once per lesson.
-    if (!simliFaceId && !mouthAnalyserRef.current) {
-      try {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (Ctx) {
-          const ctx = new Ctx();
-          const srcNode = ctx.createMediaElementSource(el);
-          const analyser = ctx.createAnalyser();
-          analyser.fftSize = 512;
-          analyser.smoothingTimeConstant = 0.5;
-          srcNode.connect(analyser);
-          analyser.connect(ctx.destination);
-          narrationCtxRef.current = ctx;
-          narrationSrcRef.current = srcNode;
-          mouthAnalyserRef.current = analyser;
-        }
-      } catch { /* plain playback still works, mouth falls back to blink */ }
-    }
-
     // The connection itself is normally already up — it's pre-warmed on
     // classroom mount (see the effect above). Awaiting the cached promise is
     // then instant; the overlay only appears in the rare case the pre-warm
@@ -556,6 +538,43 @@ function Classroom({
     }
     photoTtsWarmedRef.current = true;
     const objectUrl = URL.createObjectURL(blob);
+
+    // Photo personas: precompute a loudness envelope from the decoded WAV
+    // so the mouth can follow the real voice WITHOUT touching the audio
+    // element's output path. (Routing the element through
+    // createMediaElementSource would hand its audio to Web Audio — if that
+    // context is ever suspended by autoplay policy, the learner hears
+    // nothing at all. Decoding a copy is risk-free: playback stays plain
+    // and always audible.)
+    let envelope = null;
+    const ENV_FPS = 60;
+    if (!simliFaceId) {
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) {
+          const ctx = narrationCtxRef.current || new Ctx();
+          narrationCtxRef.current = ctx;
+          const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+          const ch = buf.getChannelData(0);
+          const per = Math.max(1, Math.floor(buf.sampleRate / ENV_FPS));
+          const out = new Float32Array(Math.ceil(ch.length / per));
+          for (let i = 0; i < out.length; i += 1) {
+            let sum = 0;
+            const start = i * per;
+            const end = Math.min(start + per, ch.length);
+            for (let j = start; j < end; j += 1) sum += ch[j] * ch[j];
+            const rms = Math.sqrt(sum / Math.max(1, end - start));
+            out[i] = Math.max(0, Math.min(1, (rms - 0.015) * 8));
+          }
+          envelope = out;
+        }
+      } catch { /* no envelope — the gentle speaking bob still applies */ }
+      if (myGen !== speechGenRef.current) {
+        if (showOverlay) setAvatarConnecting(false);
+        URL.revokeObjectURL(objectUrl);
+        return true;
+      }
+    }
 
     // A newer speakWithMouth() call (segment change, pause, raise hand)
     // started while this fetch was in flight — this line is stale, so drop
@@ -601,20 +620,13 @@ function Classroom({
       if (mouthRafId) { cancelAnimationFrame(mouthRafId); mouthRafId = null; }
       if (dockEl) dockEl.style.setProperty('--mouth', '0');
     };
-    if (!simliFaceId && mouthAnalyserRef.current && dockEl) {
+    if (!simliFaceId && envelope && dockEl) {
       dockEl.setAttribute('data-lipsync', '1');
-      const analyser = mouthAnalyserRef.current;
-      const buf = new Uint8Array(analyser.fftSize);
       const tick = () => {
-        analyser.getByteTimeDomainData(buf);
-        let sum = 0;
-        for (let i = 0; i < buf.length; i += 1) {
-          const d = (buf[i] - 128) / 128;
-          sum += d * d;
-        }
-        // RMS → 0..1 with a small floor cut so hiss doesn't twitch the lips.
-        const rms = Math.sqrt(sum / buf.length);
-        const level = Math.max(0, Math.min(1, (rms - 0.02) * 7));
+        // Read the precomputed loudness at the element's real playback
+        // position — perfectly in step with what the learner hears.
+        const idx = Math.floor(el.currentTime * ENV_FPS);
+        const level = idx >= 0 && idx < envelope.length ? envelope[idx] : 0;
         dockEl.style.setProperty('--mouth', level.toFixed(3));
         mouthRafId = requestAnimationFrame(tick);
       };
@@ -651,7 +663,7 @@ function Classroom({
       // photo personas) turn on the gentle speaking bob; the mouth itself is
       // driven by the amplitude loop, not by this flag.
       if (photoOverlay) setAvatarConnecting(false);
-      if (!simliFaceId && mouthAnalyserRef.current) setMouth(true);
+      if (!simliFaceId) setMouth(true);
     } catch {
       // Autoplay blocked or similar — fall back to Web Speech for this line.
       if (showOverlay) setAvatarConnecting(false);
@@ -702,18 +714,18 @@ function Classroom({
     // personas (Mira, Daniel) use the same audio to drive the amplitude-
     // based mouth — plus a far better voice than the browser's.
     //
-    // Deliberately NO Web Speech fallback here: switching to the browser's
-    // voice mid-lesson means the presenter suddenly sounds like a different
-    // person (and a live avatar's lips can't follow it at all). If TTS is
-    // still down after all server+client retries, this line is skipped
-    // gracefully — the text is on the board/captions/Q&A thread — rather
-    // than read aloud in the wrong voice.
-    if (!isTavus) {
+    // Server TTS is preferred (better voice, and it's the only audio a live
+    // avatar can lip-sync to). If it fails, ttsDownRef latches for the rest
+    // of the session so every later line uses the browser voice too — the
+    // presenter then sounds the same from start to finish instead of
+    // flipping between two voices line by line.
+    if (!isTavus && !ttsDownRef.current) {
       const handled = await speakViaServerTts(text, {
         charOffset, textLen, driveBoard, nSteps, finish, myGen,
       });
-      if (!handled && myGen === speechGenRef.current) finish();
-      return;
+      if (handled) return;
+      ttsDownRef.current = true;
+      if (myGen !== speechGenRef.current) return; // superseded while we tried
     }
 
     // Amara: try the live Tavus avatar first — real voice + lip-synced video,

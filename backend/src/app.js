@@ -256,8 +256,12 @@ export function createApp(pool) {
       res.set('Content-Type', 'audio/wav');
       return res.send(wav);
     } catch (err) {
-      console.error(`[tts] falling back to client speech: ${err && err.message}`);
-      return res.status(502).json({ error: 'TTS is unavailable.' });
+      const detail = (err && err.message) || 'unknown';
+      console.error(`[tts] falling back to client speech: ${detail}`);
+      // Surface the upstream reason (status code / message only, never the
+      // key) so a quota or model problem is diagnosable from the browser
+      // instead of looking like a generic outage.
+      return res.status(502).json({ error: 'TTS is unavailable.', detail });
     }
   });
 
