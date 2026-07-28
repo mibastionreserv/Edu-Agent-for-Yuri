@@ -35,6 +35,7 @@ function Toast({ msg }) {
 // course-content/avatars/ to get a talking-mouth overlay on it too.
 const PHOTO_LANDMARKS = {
   mira: { mouthX: 50, mouthY: 47 },
+  meilin: { mouthX: 50, mouthY: 56 },
 };
 
 // Personas backed by a live Simli video avatar (real WebRTC face + lip-sync)
@@ -46,10 +47,12 @@ const SIMLI_FACES = {
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
   // replaces the drawn SVG automatically, no code change needed per persona.
-  // Personas with a live Simli face (SIMLI_FACES) still use this static
-  // photo/SVG avatar on the picker screen — no mic, no video, no button.
-  // Classroom swaps to the live SimliAvatar video for the whole lesson once
-  // it opens (see Classroom's simliFaceId + auto-connect effect).
+  // This is always the default view — including for personas with a live
+  // Simli face (SIMLI_FACES): the CSS mouth/bob animation below is what
+  // actually moves reliably in sync with speech. Classroom only swaps to the
+  // live SimliAvatar video once it has captured real audio to feed it (see
+  // ensureLiveAvatar) — a Simli video with no live audio track goes idle and
+  // eventually blacks out, so it's never worth showing without a real source.
   const [photoFailed, setPhotoFailed] = useState(false);
   const dims = { width: size, height: size * 1.15 };
   const lm = PHOTO_LANDMARKS[id];
@@ -116,6 +119,7 @@ function Classroom({
   const [voiceName, setVoiceName] = useState('');
   const [paused, setPaused] = useState(false);
   const [simliFailed, setSimliFailed] = useState(false);
+  const [liveNarration, setLiveNarration] = useState(false);
   const mouthTimer = useRef(null);
   const stopSpeechRef = useRef(null);
   const threadRef = useRef([]);
@@ -126,14 +130,19 @@ function Classroom({
   // segment, since the Web Speech API has no native "seek".
   const lastCharRef = useRef(0);
   const fullTextRef = useRef('');
+  // Time-based progress-estimator interval (see speakWithMouth) and a flag
+  // that tells its onEnd handler whether the utterance was deliberately
+  // interrupted (pause/stop) rather than finished naturally.
+  const progressTimerRef = useRef(null);
+  const interruptedRef = useRef(false);
 
-  // Live Simli video avatar: connected automatically (no button, no mic) the
-  // moment the lesson opens for a persona with a Simli face, and stays
-  // connected for the whole lesson — only the mic gets attached/detached, and
-  // only while the learner is in voice Q&A mode (see startVoiceMode).
+  // Live Simli video avatar: only ever shown once a real audio track is
+  // captured (see ensureLiveAvatar) — otherwise the static animated photo is
+  // used, since a Simli video with no audio at all just goes idle/black.
   const simliFaceId = SIMLI_FACES[avatarId];
   const simliRef = useRef(null);
-  const micStreamRef = useRef(null);
+  const simliAttemptedRef = useRef(false);
+  const narrationStreamRef = useRef(null);
   const recognitionRef = useRef(null);
   const voiceModeRef = useRef(false);
 
@@ -192,24 +201,12 @@ function Classroom({
     return () => { alive = false; };
   }, [lang]);
 
-  // Live Simli video: auto-connects once for the whole lesson — no button, no
-  // mic grabbed here — the moment the persona has a Simli face configured.
-  // Only the mic gets attached later, on demand, via startVoiceMode().
-  // Depends on `loading` too: while the module is still loading, the early
-  // return below renders a spinner instead of <SimliAvatar>, so the ref isn't
-  // attached yet — this re-fires once loading flips false and the ref exists.
-  useEffect(() => {
-    if (!simliFaceId || loading) return undefined;
-    setSimliFailed(false);
-    if (simliRef.current) simliRef.current.start(null, simliFaceId);
-    return () => { if (simliRef.current) simliRef.current.stop(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simliFaceId, loading]);
-
   // Hard stop: cancels speech outright and forgets any resume position. Used
   // for segment navigation and unmount — a real "leave this moment" action,
   // unlike pauseNarration() which deliberately remembers where it stopped.
   function stopAll() {
+    interruptedRef.current = true;
+    if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
     if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
     if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
     cancelSpeech();
@@ -220,8 +217,13 @@ function Classroom({
 
   // Soft stop: cancels the current utterance (so a prompt/answer can speak
   // right away) but keeps lastCharRef/fullTextRef intact, so resumeNarration()
-  // can continue the segment from exactly this point.
+  // can continue the segment from exactly this point. interruptedRef is the
+  // key bit: it tells the in-flight speakWithMouth's onEnd handler (which
+  // *will* still fire once cancelSpeech() below interrupts the utterance)
+  // that this wasn't a natural finish, so it must not clobber lastCharRef.
   function pauseNarration() {
+    interruptedRef.current = true;
+    if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
     if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
     if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
     cancelSpeech();
@@ -236,8 +238,8 @@ function Classroom({
     speakWithMouth(full.slice(from), { driveBoard: true, charOffset: from, fullLen: full.length });
   }
 
-  // Ends the live mic capture (speech recognition + mic track). Never touches
-  // the Simli video connection itself — that stays up for the whole lesson.
+  // Ends the live mic capture (speech recognition only — it manages its own
+  // microphone access, no separate getUserMedia needed).
   function stopVoiceMode() {
     voiceModeRef.current = false;
     if (recognitionRef.current) {
@@ -246,36 +248,103 @@ function Classroom({
       rec.onend = null; // don't let the auto-restart handler fire after an intentional stop
       try { rec.stop(); } catch { /* noop */ }
     }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((t) => t.stop());
-      micStreamRef.current = null;
-    }
     setVoiceMode(false);
   }
+
+  // Holds the captured audio track between "we got it" and "the SimliAvatar
+  // element exists to hand it to" — setLiveNarration(true) below mounts
+  // <SimliAvatar>, and the effect further down calls .start() once its ref
+  // is actually attached (can't call simliRef.current.start() directly inside
+  // ensureLiveAvatar: it isn't rendered yet, since rendering it is gated on
+  // liveNarration).
+  const pendingAudioTrackRef = useRef(null);
+
+  // Captures the tab's own audio output (once, on the learner's first Play
+  // click — a real user gesture, required for getDisplayMedia) and feeds it
+  // to the live Simli avatar as a persistent track for the rest of the
+  // lesson. Whatever plays through this tab from that point on — segment
+  // narration, the raise-hand prompt, Q&A answers, all of which go through
+  // the same speak() call — drives real lip-sync, since Simli only needs
+  // *a* live audio track, not necessarily one from a microphone.
+  // A Simli connection with no audio at all goes idle and eventually blacks
+  // out (confirmed by hand), so this is the only way to get a moving avatar
+  // instead of the static animated photo. If the browser denies/doesn't
+  // support this, we just keep using the static photo — no error shown.
+  async function ensureLiveAvatar() {
+    if (!simliFaceId || simliAttemptedRef.current) return;
+    simliAttemptedRef.current = true;
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) return;
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true, preferCurrentTab: true });
+      stream.getVideoTracks().forEach((t) => t.stop()); // only the audio drives Simli
+      const track = stream.getAudioTracks()[0];
+      if (!track) { stream.getTracks().forEach((t) => t.stop()); return; }
+      narrationStreamRef.current = stream;
+      track.addEventListener('ended', () => { narrationStreamRef.current = null; setLiveNarration(false); });
+      pendingAudioTrackRef.current = track;
+      setSimliFailed(false);
+      setLiveNarration(true);
+    } catch {
+      // Denied, cancelled, or unsupported — silently keep the static photo.
+    }
+  }
+
+  // Fires once <SimliAvatar> actually mounts (right after ensureLiveAvatar
+  // sets liveNarration true) and hands it the audio track we already have.
+  useEffect(() => {
+    if (!liveNarration || !simliRef.current || !pendingAudioTrackRef.current) return;
+    const track = pendingAudioTrackRef.current;
+    pendingAudioTrackRef.current = null;
+    simliRef.current.start(track, simliFaceId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveNarration]);
 
   async function speakWithMouth(text, {
     onEnd, driveBoard, charOffset = 0, fullLen,
   } = {}) {
     setSpeaking(true);
+    interruptedRef.current = false;
     if (mouthTimer.current) clearInterval(mouthTimer.current);
     mouthTimer.current = setInterval(() => setMouth((v) => !v), 220);
     const textLen = fullLen ?? (text || '').length;
     const nSteps = driveBoard ? steps.length : 0;
     if (driveBoard && charOffset === 0) setRevealed(nSteps > 0 ? 1 : 0);
+
+    // Chrome's SpeechSynthesisUtterance "boundary" event doesn't fire at all
+    // for some network voices (confirmed: zero boundary events over a full
+    // utterance with the "Google US English" voice) — so board reveal and
+    // the pause/resume position are estimated from elapsed time as the
+    // primary driver. If boundary events *do* fire on a given browser/voice,
+    // they still update the same ref with a (more accurate) value.
+    const CHARS_PER_MS = 0.0152; // ~160 wpm at the utterance's rate (0.97)
+    const startedAt = Date.now();
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    if (driveBoard) {
+      progressTimerRef.current = setInterval(() => {
+        const estAbs = charOffset + (Date.now() - startedAt) * CHARS_PER_MS;
+        lastCharRef.current = Math.max(lastCharRef.current, Math.min(estAbs, textLen));
+        setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
+      }, 200);
+    }
+
     stopSpeechRef.current = await speak(text, lang, {
       onBoundary: driveBoard ? (ci) => {
         const abs = charOffset + ci;
-        lastCharRef.current = abs;
-        setRevealed((r) => Math.max(r, revealedFromProgress(abs, textLen, nSteps)));
+        lastCharRef.current = Math.max(lastCharRef.current, abs);
+        setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
       } : undefined,
       onEnd: () => {
+        if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
         if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
         setSpeaking(false); setMouth(false);
-        if (driveBoard) { setRevealed(nSteps); lastCharRef.current = textLen; }
+        const wasInterrupted = interruptedRef.current;
+        interruptedRef.current = false;
+        if (driveBoard && !wasInterrupted) { setRevealed(nSteps); lastCharRef.current = textLen; }
         if (onEnd) onEnd();
       },
     });
     if (!speechSupported()) {
+      if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
       if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
       setSpeaking(false); setMouth(false);
       if (driveBoard) { setRevealed(nSteps); lastCharRef.current = textLen; }
@@ -286,6 +355,7 @@ function Classroom({
   function play() {
     if (!segment) return;
     setShowCheck(false);
+    if (simliFaceId) ensureLiveAvatar();
     const full = presenterText(segment.text);
     fullTextRef.current = full;
     lastCharRef.current = 0;
@@ -334,10 +404,13 @@ function Classroom({
   }
 
   // Pressing the Speak tab is the one and only mic trigger: it turns speech
-  // recognition on continuously (not just for one question) and, for
-  // personas with a live Simli face, attaches the same mic track to the
-  // already-connected live video. It all stays on until the learner lowers
-  // their raised hand (see resume(), which calls stopVoiceMode()).
+  // recognition on continuously (not just for one question), and it stays on
+  // until the learner lowers their raised hand (see resume(), which calls
+  // stopVoiceMode()). SpeechRecognition manages its own microphone access —
+  // no separate getUserMedia call needed. The live avatar's lip-sync is
+  // driven separately, by the learner's own captured tab audio (see
+  // ensureLiveAvatar), not by this mic — she should only ever appear to
+  // speak when she's actually speaking.
   function startVoiceMode() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert(ui.voiceUnsupported); return; }
@@ -364,14 +437,6 @@ function Classroom({
     };
     try { rec.start(); } catch { /* noop */ }
     recognitionRef.current = rec;
-
-    if (simliFaceId) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-        if (!voiceModeRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
-        micStreamRef.current = stream;
-        if (simliRef.current) simliRef.current.attachMic(stream.getAudioTracks()[0]);
-      }).catch(() => { /* mic denied — recognition still works without the live lip cue */ });
-    }
   }
 
   function goSegment(next) {
@@ -398,7 +463,7 @@ function Classroom({
         <div className="left-pane">
           <div className="stage">
             <div className="presenter">
-              {simliFaceId && !simliFailed
+              {simliFaceId && liveNarration && !simliFailed
                 ? (
                   <SimliAvatar
                     ref={simliRef}
