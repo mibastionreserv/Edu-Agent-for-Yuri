@@ -209,6 +209,25 @@ export function createApp(pool) {
     }
   });
 
+  // --- Simli ICE servers for the WebRTC P2P transport. Proxied server-side
+  // for the same reason as /api/simli-token: the Simli API key never reaches
+  // the browser. The returned TURN credentials are short-lived and meant to
+  // be handed to clients, unlike the API key itself.
+  app.get('/api/simli-ice', requireAuth, async (_req, res) => {
+    const apiKey = process.env.SIMLI_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'Live avatar is not configured.' });
+    try {
+      const simliRes = await fetch('https://api.simli.ai/compose/ice', {
+        headers: { 'x-simli-api-key': apiKey },
+      });
+      if (!simliRes.ok) return res.status(502).json({ error: 'Simli rejected the ICE request.' });
+      const iceServers = await simliRes.json();
+      return res.json({ iceServers });
+    } catch {
+      return res.status(502).json({ error: 'Could not reach Simli.' });
+    }
+  });
+
   app.get('/api/questions', requireAuth, async (req, res) => {
     try {
       const { rows } = await pool.query(

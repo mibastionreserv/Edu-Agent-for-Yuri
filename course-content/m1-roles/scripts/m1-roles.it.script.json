@@ -5,7 +5,7 @@
   "segments": [
     {
       "id": "what-is-scrum",
-      "text": "Benvenuto! Sono Mira e insieme faremo davvero capire lo Scrum. Lo Scrum è un framework leggero per costruire prodotti complessi quando non puoi prevedere tutto in anticipo. È un framework, non un metodo fisso: ti dà solo l'essenziale e il resto lo completa il tuo team. Funziona grazie a un'idea — l'empirismo: impariamo da ciò che accade davvero e ci adattiamo, invece di seguire un piano rigido fino al disastro. L'empirismo poggia su tre pilastri: trasparenza, rendiamo visibile il lavoro; ispezione, lo controlliamo spesso; e adattamento, cambiamo rotta quando impariamo qualcosa.",
+      "text": "Benvenuto! Sono {{presenter}} e insieme faremo davvero capire lo Scrum. Lo Scrum è un framework leggero per costruire prodotti complessi quando non puoi prevedere tutto in anticipo. È un framework, non un metodo fisso: ti dà solo l'essenziale e il resto lo completa il tuo team. Funziona grazie a un'idea — l'empirismo: impariamo da ciò che accade davvero e ci adattiamo, invece di seguire un piano rigido fino al disastro. L'empirismo poggia su tre pilastri: trasparenza, rendiamo visibile il lavoro; ispezione, lo controlliamo spesso; e adattamento, cambiamo rotta quando impariamo qualcosa.",
       "steps": [
         {
           "draw": [

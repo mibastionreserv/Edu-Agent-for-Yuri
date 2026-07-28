@@ -19,6 +19,7 @@
   "estMin": "min",
   "raiseHand": "Alza la mano",
   "questionTitle": "Hai una domanda?",
+  "raiseHandPrompt": "Se hai una domanda, scrivila nell'area Domande, oppure dilla dopo aver premuto Parla.",
   "type": "Scrivi",
   "speak": "Parla",
   "ask": "Chiedi",

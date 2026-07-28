@@ -19,6 +19,7 @@
   "estMin": "min",
   "raiseHand": "Raise hand",
   "questionTitle": "You have a question?",
+  "raiseHandPrompt": "If you have a question, type it in the Q&A area, or say it after pressing Speak.",
   "type": "Type",
   "speak": "Speak",
   "ask": "Ask",

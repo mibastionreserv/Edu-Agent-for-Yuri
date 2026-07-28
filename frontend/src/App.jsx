@@ -100,6 +100,7 @@ function Classroom({
   const [mod, setMod] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const presenterName = (course.avatars || []).find((a) => a.id === avatarId)?.name || avatarId;
   const [seg, setSeg] = useState(initialSegment || 0);
   const [speaking, setSpeaking] = useState(false);
   const [thinking, setThinking] = useState(false);
@@ -151,6 +152,10 @@ function Classroom({
 
   const segment = mod && mod.segments[seg];
   const steps = useMemo(() => (segment && segment.steps) || [], [segment]);
+  // Narration text is authored once and reused for every presenter; swap the
+  // {{presenter}} token for whichever avatar the learner actually picked so
+  // Mei-Lin doesn't introduce herself as "Mira".
+  const presenterText = (text) => (text || '').split('{{presenter}}').join(presenterName);
 
   useEffect(() => {
     let alive = true;
@@ -204,11 +209,14 @@ function Classroom({
   function play() {
     if (!segment) return;
     setShowCheck(false);
-    speakWithMouth(segment.text, { driveBoard: true });
+    speakWithMouth(presenterText(segment.text), { driveBoard: true });
   }
   function raiseHand() {
+    // Tapping the raised hand again lowers it and continues the lesson.
+    if (handUp) { resume(); return; }
     stopAll(); setHandUp(true);
     setThread((t) => [...t, { role: 'presenter', text: ui.questionTitle }]);
+    if (ui.raiseHandPrompt) speakWithMouth(ui.raiseHandPrompt, { driveBoard: false });
   }
   function resume() { setHandUp(false); play(); }
 
@@ -270,7 +278,7 @@ function Classroom({
             <div className="presenter">
               <Avatar id={avatarId} mouth={mouth} state={avatarState} size={170} />
               <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
-                {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : 'Mira'))}
+                {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
               </div>
             </div>
 
@@ -283,7 +291,7 @@ function Classroom({
               {captionsOn && !showCheck && (
                 <div className="captions">
                   <div className="cc-label">{ui.captions} · {lang.toUpperCase()}</div>
-                  <div>{segment.text}</div>
+                  <div>{presenterText(segment.text)}</div>
                 </div>
               )}
             </div>

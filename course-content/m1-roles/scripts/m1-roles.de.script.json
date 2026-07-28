@@ -5,7 +5,7 @@
   "segments": [
     {
       "id": "what-is-scrum",
-      "text": "Willkommen! Ich bin Mira, und gemeinsam bringen wir Scrum wirklich auf den Punkt. Scrum ist ein leichtgewichtiges Rahmenwerk, um komplexe Produkte zu bauen, wenn man nicht alles im Voraus planen kann. Es ist ein Rahmenwerk, keine feste Methode: Es gibt nur das Wesentliche vor, den Rest füllt dein Team. Es funktioniert wegen einer Idee — Empirie: Wir lernen aus dem, was tatsächlich passiert, und passen an, statt einem starren Plan blind zu folgen. Empirie ruht auf drei Säulen: Transparenz, wir machen die Arbeit sichtbar; Überprüfung, wir prüfen sie häufig; und Anpassung, wir ändern den Kurs, wenn wir etwas lernen.",
+      "text": "Willkommen! Ich bin {{presenter}}, und gemeinsam bringen wir Scrum wirklich auf den Punkt. Scrum ist ein leichtgewichtiges Rahmenwerk, um komplexe Produkte zu bauen, wenn man nicht alles im Voraus planen kann. Es ist ein Rahmenwerk, keine feste Methode: Es gibt nur das Wesentliche vor, den Rest füllt dein Team. Es funktioniert wegen einer Idee — Empirie: Wir lernen aus dem, was tatsächlich passiert, und passen an, statt einem starren Plan blind zu folgen. Empirie ruht auf drei Säulen: Transparenz, wir machen die Arbeit sichtbar; Überprüfung, wir prüfen sie häufig; und Anpassung, wir ändern den Kurs, wenn wir etwas lernen.",
       "steps": [
         {
           "draw": [

@@ -5,7 +5,7 @@
   "segments": [
     {
       "id": "what-is-scrum",
-      "text": "Welcome! I'm Mira, and together we'll make Scrum genuinely click. Scrum is a lightweight framework for building complex products when you can't predict everything up front. It's a framework, not a fixed method: it gives you only the essentials, and your team fills in the rest. It works because of one idea — empiricism: we learn from what actually happens and adjust, instead of following a fixed plan off a cliff. Empiricism stands on three pillars: transparency, we make the work visible; inspection, we check it often; and adaptation, we change course when we learn something.",
+      "text": "Welcome! I'm {{presenter}}, and together we'll make Scrum genuinely click. Scrum is a lightweight framework for building complex products when you can't predict everything up front. It's a framework, not a fixed method: it gives you only the essentials, and your team fills in the rest. It works because of one idea — empiricism: we learn from what actually happens and adjust, instead of following a fixed plan off a cliff. Empiricism stands on three pillars: transparency, we make the work visible; inspection, we check it often; and adaptation, we change course when we learn something.",
       "steps": [
         {
           "draw": [
