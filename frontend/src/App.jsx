@@ -129,9 +129,7 @@ function Classroom({
   const [voiceName, setVoiceName] = useState('');
   const [paused, setPaused] = useState(false);
   const [simliFailed, setSimliFailed] = useState(false);
-  const [liveNarration, setLiveNarration] = useState(false);
   const [tavusFailed, setTavusFailed] = useState(false);
-  const [tavusLive, setTavusLive] = useState(false);
   // True while a live avatar (Simli or Tavus) is connecting for the first
   // time this lesson — blocks the whole UI behind a full-screen loader so
   // the learner never sees a static/half-animated avatar mid-connect (SRS
@@ -161,9 +159,9 @@ function Classroom({
   const progressTimerRef = useRef(null);
   const interruptedRef = useRef(false);
 
-  // Live Simli video avatar: only ever shown once a real audio track is
-  // captured (see ensureLiveAvatar) — otherwise the static animated photo is
-  // used, since a Simli video with no audio at all just goes idle/black.
+  // Live Simli video avatar: always mounted for these personas — the
+  // classroom presenter is exclusively the service-rendered video (SRS
+  // FR-AV-5), connected via pre-warm the moment the classroom opens.
   const simliFaceId = SIMLI_FACES[avatarId];
   const simliRef = useRef(null);
   const simliAttemptedRef = useRef(false);
@@ -181,7 +179,6 @@ function Classroom({
   const isTavus = Boolean(TAVUS_PERSONAS[avatarId]);
   const tavusRef = useRef(null);
   const tavusReadyRef = useRef(null); // Promise<boolean>, set once connecting starts
-  const tavusStartResolveRef = useRef(null);
   const tavusStoppedResolveRef = useRef(null);
 
   const QA_MIN = 260; const QA_MAX = 640; const QA_DEFAULT = 320;
@@ -291,13 +288,6 @@ function Classroom({
     setVoiceMode(false);
   }
 
-  // Holds the captured audio track between "we got it" and "the SimliAvatar
-  // element exists to hand it to" — setLiveNarration(true) mounts
-  // <SimliAvatar>, and the effect below calls .start() once its ref is
-  // actually attached (can't call simliRef.current.start() directly from
-  // ensureLiveAvatarFromElement: it isn't rendered yet, since rendering it is
-  // gated on liveNarration).
-  const pendingAudioTrackRef = useRef(null);
   // The hidden <audio> element (rendered near the presenter, below) that
   // plays our own server-synthesized narration. Its captureStream() is what
   // actually drives Simli — no browser permission prompt needed for that,
@@ -322,7 +312,7 @@ function Classroom({
     if (!simliFaceId) return Promise.resolve(false);
     if (simliConnectReadyRef.current) return simliConnectReadyRef.current;
     simliConnectReadyRef.current = new Promise((resolve) => {
-      if (simliAttemptedRef.current) { resolve(false); return; }
+      if (simliAttemptedRef.current || !simliRef.current) { resolve(false); return; }
       simliAttemptedRef.current = true;
       try {
         const captureFn = el.captureStream || el.mozCaptureStream;
@@ -331,7 +321,6 @@ function Classroom({
         const track = stream.getAudioTracks()[0];
         if (!track) { resolve(false); return; }
         narrationStreamRef.current = stream;
-        pendingAudioTrackRef.current = track;
         simliConnectResolveRef.current = resolve;
         // captureStream() taps the element's decoded audio before the
         // volume/mute stage, so muting local playback here does NOT affect
@@ -339,54 +328,32 @@ function Classroom({
         // line twice (once locally, once relayed back via Simli's own
         // lip-synced audio track).
         el.muted = true;
-        setSimliFailed(false);
-        setLiveNarration(true); // mounts <SimliAvatar>; effect below calls .start()
+        // <SimliAvatar> is ALWAYS mounted for Simli personas, so start() is
+        // called directly — no setState→remount→effect chain to go wrong.
+        // resolve() fires from the onStatusChange callback in the JSX below
+        // ('live' → true, 'error' → false): start() resolving only means the
+        // client object exists, not that the WebRTC connection is up.
+        simliRef.current.start(track, simliFaceId);
       } catch {
-        resolve(false); // Unsupported — silently keep the static animated photo.
+        resolve(false); // Unsupported — narration still plays, without video.
       }
     });
     return simliConnectReadyRef.current;
   }
 
-  // Fires once <SimliAvatar> actually mounts (right after
-  // ensureLiveAvatarFromElement sets liveNarration true) and hands it the
-  // audio track we already captured. Resolving simliConnectResolveRef is done
-  // from the SimliAvatar onStatusChange callback in the JSX below (status
-  // 'live'/'error'), not here — .start() resolving just means the client
-  // object was created, not that the WebRTC connection is actually up.
-  useEffect(() => {
-    if (!liveNarration || !simliRef.current || !pendingAudioTrackRef.current) return;
-    const track = pendingAudioTrackRef.current;
-    pendingAudioTrackRef.current = null;
-    simliRef.current.start(track, simliFaceId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveNarration]);
-
-  // Mounts <TavusAvatar> (if not already) and returns a promise that
-  // resolves once it's actually connected (or false on failure). Callers
-  // must await this before sending the first line — unlike Simli, Tavus is
-  // the only source of audio here, so there's nothing to hear until the
-  // Daily call is actually joined.
+  // Starts the Tavus connection (once) and returns a promise resolving true
+  // once actually connected. <TavusAvatar> is ALWAYS mounted for Tavus
+  // personas, so the ref is available from the first render — start() is
+  // called directly, with no mount-and-wait-for-effect dance (the previous
+  // setState→remount→effect chain silently never fired on production,
+  // leaving the loader up forever and the conversation never created).
   function ensureTavusAvatar() {
-    if (!isTavus) return Promise.resolve(false);
+    if (!isTavus || !tavusRef.current) return Promise.resolve(false);
     if (tavusReadyRef.current) return tavusReadyRef.current;
-    tavusReadyRef.current = new Promise((resolve) => { tavusStartResolveRef.current = resolve; });
-    setTavusLive(true); // mounts <TavusAvatar>; the effect below calls .start()
+    tavusReadyRef.current = tavusRef.current.start()
+      .then((conversationId) => Boolean(conversationId));
     return tavusReadyRef.current;
   }
-
-  // Fires once <TavusAvatar> actually mounts (right after ensureTavusAvatar
-  // sets tavusLive true) and kicks off the connection.
-  useEffect(() => {
-    if (!tavusLive || !tavusRef.current) return;
-    tavusRef.current.start().then((conversationId) => {
-      if (tavusStartResolveRef.current) {
-        tavusStartResolveRef.current(Boolean(conversationId));
-        tavusStartResolveRef.current = null;
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tavusLive]);
 
   // Pre-warm the live avatar the moment the classroom opens (SRS FR-FLOW-0 /
   // FR-AV-5/8): the connection cost is paid once, up front, behind the
