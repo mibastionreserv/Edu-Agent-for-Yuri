@@ -798,10 +798,19 @@ function Classroom({
     setThread((t) => [...t, { role: 'presenter', text: ui.questionTitle }]);
     if (ui.raiseHandPrompt) speakWithMouth(ui.raiseHandPrompt, { driveBoard: false });
   }
+  // Lowering the hand: the presenter acknowledges that the Q&A is over and
+  // says she's picking the lesson back up, then narration continues from
+  // exactly where it was interrupted (SRS FR-FLOW-9) — instead of silently
+  // jumping back mid-sentence.
   function resume() {
     stopVoiceMode();
     setHandUp(false);
-    resumeNarration();
+    const bridge = ui.resumeAfterQuestion;
+    if (bridge) {
+      speakWithMouth(bridge, { driveBoard: false, onEnd: resumeNarration });
+    } else {
+      resumeNarration();
+    }
   }
 
   async function submitQuestion(text, viaVoice = false) {
