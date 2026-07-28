@@ -785,7 +785,11 @@ function Classroom({
                     }
                   }}
                 />
-              ) : isTavus && tavusLive && !tavusFailed ? (
+              ) : isTavus ? (
+                /* Tavus personas NEVER fall back to the 2D drawing — the
+                   service-rendered live video is the only classroom
+                   presenter; on connection problems TavusAvatar shows its
+                   own error overlay instead (SRS FR-AV-5). */
                 <TavusAvatar
                   ref={tavusRef}
                   size={150}

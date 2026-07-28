@@ -140,7 +140,10 @@ const TavusAvatar = forwardRef(function TavusAvatar({ size = 170, onStatusChange
     <div className="simli-avatar" style={dims}>
       <video ref={videoRef} autoPlay playsInline />
       <audio ref={audioRef} autoPlay />
-      {status === 'connecting' && (
+      {(status === 'idle' || status === 'connecting') && (
+        /* 'idle' also shows the overlay: the component is mounted from the
+           moment the classroom opens and connects immediately after, so a
+           bare black box would only ever flash confusingly. */
         <div className="simli-overlay"><span className="simli-hint">Connecting…</span></div>
       )}
       {status === 'error' && (
