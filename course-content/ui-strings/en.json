@@ -35,7 +35,7 @@
   "listening": "Listening",
   "speaking": "Speaking",
   "onTopicSource": "source",
-  "holdToTalk": "Tap the mic, speak, it sends automatically",
+  "holdToTalk": "Mic is on — just speak. It turns off when you lower your hand.",
   "voiceUnsupported": "Voice input isn't supported in this browser — type instead.",
   "thinking": "Thinking…",
   "voiceReplies": "Voice replies",

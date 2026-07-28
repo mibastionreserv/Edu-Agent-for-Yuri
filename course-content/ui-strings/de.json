@@ -35,7 +35,7 @@
   "listening": "Hört zu",
   "speaking": "Spricht",
   "onTopicSource": "Quelle",
-  "holdToTalk": "Mikro antippen, sprechen, wird automatisch gesendet",
+  "holdToTalk": "Das Mikrofon ist an — sprich einfach. Es schaltet sich aus, sobald du die Hand senkst.",
   "voiceUnsupported": "Spracheingabe wird in diesem Browser nicht unterstützt – bitte tippen.",
   "thinking": "Überlegt…",
   "voiceReplies": "Sprachantworten",

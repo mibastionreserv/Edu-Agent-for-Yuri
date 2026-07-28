@@ -47,9 +47,9 @@ function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
   // replaces the drawn SVG automatically, no code change needed per persona.
   // Personas with a live Simli face (SIMLI_FACES) still use this static
-  // photo/SVG avatar for the picker and normal narration — no mic, no video
-  // connection — and only swap to the live SimliAvatar video for the duration
-  // of an actual spoken question (see Classroom's liveTalking state).
+  // photo/SVG avatar on the picker screen — no mic, no video, no button.
+  // Classroom swaps to the live SimliAvatar video for the whole lesson once
+  // it opens (see Classroom's simliFaceId + auto-connect effect).
   const [photoFailed, setPhotoFailed] = useState(false);
   const dims = { width: size, height: size * 1.15 };
   const lm = PHOTO_LANDMARKS[id];
@@ -114,18 +114,28 @@ function Classroom({
   const [captionsOn, setCaptionsOn] = useState(true);
   const [showCheck, setShowCheck] = useState(false);
   const [voiceName, setVoiceName] = useState('');
+  const [paused, setPaused] = useState(false);
+  const [simliFailed, setSimliFailed] = useState(false);
   const mouthTimer = useRef(null);
   const stopSpeechRef = useRef(null);
   const threadRef = useRef([]);
   threadRef.current = thread;
+  // Absolute character position narration was interrupted at, and the full
+  // (presenter-substituted) segment text it belongs to — lets raising a hand
+  // or hitting pause resume from that exact spot instead of restarting the
+  // segment, since the Web Speech API has no native "seek".
+  const lastCharRef = useRef(0);
+  const fullTextRef = useRef('');
 
-  // Live Simli video avatar: only mounted/connected for the duration of an
-  // actual spoken question (see startVoice/stopVoiceCapture), never on the
-  // picker screen or during normal narration.
+  // Live Simli video avatar: connected automatically (no button, no mic) the
+  // moment the lesson opens for a persona with a Simli face, and stays
+  // connected for the whole lesson — only the mic gets attached/detached, and
+  // only while the learner is in voice Q&A mode (see startVoiceMode).
   const simliFaceId = SIMLI_FACES[avatarId];
   const simliRef = useRef(null);
   const micStreamRef = useRef(null);
-  const [liveTalking, setLiveTalking] = useState(false);
+  const recognitionRef = useRef(null);
+  const voiceModeRef = useRef(false);
 
   const QA_MIN = 260; const QA_MAX = 640; const QA_DEFAULT = 320;
   const splitRef = useRef(null);
@@ -182,46 +192,93 @@ function Classroom({
     return () => { alive = false; };
   }, [lang]);
 
+  // Live Simli video: auto-connects once for the whole lesson — no button, no
+  // mic grabbed here — the moment the persona has a Simli face configured.
+  // Only the mic gets attached later, on demand, via startVoiceMode().
+  // Depends on `loading` too: while the module is still loading, the early
+  // return below renders a spinner instead of <SimliAvatar>, so the ref isn't
+  // attached yet — this re-fires once loading flips false and the ref exists.
+  useEffect(() => {
+    if (!simliFaceId || loading) return undefined;
+    setSimliFailed(false);
+    if (simliRef.current) simliRef.current.start(null, simliFaceId);
+    return () => { if (simliRef.current) simliRef.current.stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simliFaceId, loading]);
+
+  // Hard stop: cancels speech outright and forgets any resume position. Used
+  // for segment navigation and unmount — a real "leave this moment" action,
+  // unlike pauseNarration() which deliberately remembers where it stopped.
   function stopAll() {
     if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
     if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
     cancelSpeech();
-    setSpeaking(false); setMouth(false);
-    stopVoiceCapture();
+    setSpeaking(false); setMouth(false); setPaused(false);
+    lastCharRef.current = 0; fullTextRef.current = '';
+    stopVoiceMode();
   }
 
-  // Tears down the live Simli video + mic — called when a voice question
-  // finishes (result/error/end) and whenever the lesson resumes narration, so
-  // the live connection never outlives the moment the learner is speaking.
-  function stopVoiceCapture() {
-    if (simliRef.current) simliRef.current.stop();
+  // Soft stop: cancels the current utterance (so a prompt/answer can speak
+  // right away) but keeps lastCharRef/fullTextRef intact, so resumeNarration()
+  // can continue the segment from exactly this point.
+  function pauseNarration() {
+    if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
+    if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
+    cancelSpeech();
+    setSpeaking(false); setMouth(false); setPaused(true);
+  }
+
+  function resumeNarration() {
+    const full = fullTextRef.current;
+    const from = lastCharRef.current;
+    setPaused(false);
+    if (!full || from >= full.length) return;
+    speakWithMouth(full.slice(from), { driveBoard: true, charOffset: from, fullLen: full.length });
+  }
+
+  // Ends the live mic capture (speech recognition + mic track). Never touches
+  // the Simli video connection itself — that stays up for the whole lesson.
+  function stopVoiceMode() {
+    voiceModeRef.current = false;
+    if (recognitionRef.current) {
+      const rec = recognitionRef.current;
+      recognitionRef.current = null;
+      rec.onend = null; // don't let the auto-restart handler fire after an intentional stop
+      try { rec.stop(); } catch { /* noop */ }
+    }
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach((t) => t.stop());
       micStreamRef.current = null;
     }
-    setLiveTalking(false);
+    setVoiceMode(false);
   }
 
-  async function speakWithMouth(text, { onEnd, driveBoard } = {}) {
+  async function speakWithMouth(text, {
+    onEnd, driveBoard, charOffset = 0, fullLen,
+  } = {}) {
     setSpeaking(true);
     if (mouthTimer.current) clearInterval(mouthTimer.current);
     mouthTimer.current = setInterval(() => setMouth((v) => !v), 220);
-    const textLen = (text || '').length;
+    const textLen = fullLen ?? (text || '').length;
     const nSteps = driveBoard ? steps.length : 0;
-    if (driveBoard) setRevealed(nSteps > 0 ? 1 : 0);
+    if (driveBoard && charOffset === 0) setRevealed(nSteps > 0 ? 1 : 0);
     stopSpeechRef.current = await speak(text, lang, {
-      onBoundary: driveBoard ? (ci) => setRevealed((r) => Math.max(r, revealedFromProgress(ci, textLen, nSteps))) : undefined,
+      onBoundary: driveBoard ? (ci) => {
+        const abs = charOffset + ci;
+        lastCharRef.current = abs;
+        setRevealed((r) => Math.max(r, revealedFromProgress(abs, textLen, nSteps)));
+      } : undefined,
       onEnd: () => {
         if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
         setSpeaking(false); setMouth(false);
-        if (driveBoard) setRevealed(nSteps);
+        if (driveBoard) { setRevealed(nSteps); lastCharRef.current = textLen; }
         if (onEnd) onEnd();
       },
     });
     if (!speechSupported()) {
       if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
       setSpeaking(false); setMouth(false);
-      if (driveBoard) setRevealed(nSteps);
+      if (driveBoard) { setRevealed(nSteps); lastCharRef.current = textLen; }
       if (onEnd) onEnd();
     }
   }
@@ -229,21 +286,35 @@ function Classroom({
   function play() {
     if (!segment) return;
     setShowCheck(false);
-    speakWithMouth(presenterText(segment.text), { driveBoard: true });
+    const full = presenterText(segment.text);
+    fullTextRef.current = full;
+    lastCharRef.current = 0;
+    setPaused(false);
+    speakWithMouth(full, { driveBoard: true });
+  }
+  function togglePlay() {
+    if (speaking) { pauseNarration(); return; }
+    if (paused) { resumeNarration(); return; }
+    play();
   }
   function raiseHand() {
-    // Tapping the raised hand again lowers it and continues the lesson.
+    // Tapping the raised hand again lowers it and continues the lesson from
+    // exactly where narration was interrupted.
     if (handUp) { resume(); return; }
-    stopAll(); setHandUp(true);
+    pauseNarration(); setHandUp(true);
     setThread((t) => [...t, { role: 'presenter', text: ui.questionTitle }]);
     if (ui.raiseHandPrompt) speakWithMouth(ui.raiseHandPrompt, { driveBoard: false });
   }
-  function resume() { setHandUp(false); play(); }
+  function resume() {
+    stopVoiceMode();
+    setHandUp(false);
+    resumeNarration();
+  }
 
   async function submitQuestion(text, viaVoice = false) {
     const q = (text ?? question).trim();
     if (!q) return;
-    if (!handUp) { stopAll(); setHandUp(true); }
+    if (!handUp) { pauseNarration(); setHandUp(true); }
     const history = threadRef.current
       .filter((m) => m.role === 'learner' || (m.role === 'presenter' && m.topicality))
       .map((m) => ({ role: m.role, text: m.text }));
@@ -262,32 +333,44 @@ function Classroom({
     } finally { setAsking(false); }
   }
 
-  function startVoice() {
-    // Pressing Speak is the one and only mic trigger: it starts speech
-    // recognition *and*, for personas with a live Simli face, opens the video
-    // connection and feeds it the same mic track — both torn down the moment
-    // the question is captured (or recognition ends/errors) so the mic is
-    // never listening while the presenter is talking.
+  // Pressing the Speak tab is the one and only mic trigger: it turns speech
+  // recognition on continuously (not just for one question) and, for
+  // personas with a live Simli face, attaches the same mic track to the
+  // already-connected live video. It all stays on until the learner lowers
+  // their raised hand (see resume(), which calls stopVoiceMode()).
+  function startVoiceMode() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert(ui.voiceUnsupported); return; }
+    if (voiceModeRef.current) return;
     cancelSpeech();
+    voiceModeRef.current = true;
+    setVoiceMode(true);
     const rec = new SR();
     rec.lang = langTag(lang);
-    rec.onresult = (ev) => { stopVoiceCapture(); submitQuestion(ev.results[0][0].transcript, true); };
-    rec.onerror = () => stopVoiceCapture();
-    rec.onend = () => stopVoiceCapture();
-    rec.start();
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.onresult = (ev) => {
+      const res = ev.results[ev.results.length - 1];
+      if (res && res.isFinal) submitQuestion(res[0].transcript, true);
+    };
+    rec.onerror = (e) => {
+      if (e.error === 'no-speech' || e.error === 'aborted') return; // keep listening
+      stopVoiceMode();
+    };
+    rec.onend = () => {
+      // Some browsers end recognition after a short silence even with
+      // continuous:true — restart automatically while voice mode is still on.
+      if (voiceModeRef.current) { try { rec.start(); } catch { /* already running */ } }
+    };
+    try { rec.start(); } catch { /* noop */ }
+    recognitionRef.current = rec;
 
     if (simliFaceId) {
       navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        if (!voiceModeRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
         micStreamRef.current = stream;
-        setLiveTalking(true);
-        // Give the SimliAvatar <video>/<audio> elements a tick to mount
-        // before wiring the client to them.
-        requestAnimationFrame(() => {
-          if (simliRef.current) simliRef.current.start(stream.getAudioTracks()[0], simliFaceId);
-        });
-      }).catch(() => { /* mic denied — voice recognition still works without the live face */ });
+        if (simliRef.current) simliRef.current.attachMic(stream.getAudioTracks()[0]);
+      }).catch(() => { /* mic denied — recognition still works without the live lip cue */ });
     }
   }
 
@@ -315,8 +398,14 @@ function Classroom({
         <div className="left-pane">
           <div className="stage">
             <div className="presenter">
-              {liveTalking
-                ? <SimliAvatar ref={simliRef} size={170} />
+              {simliFaceId && !simliFailed
+                ? (
+                  <SimliAvatar
+                    ref={simliRef}
+                    size={170}
+                    onStatusChange={(s) => { if (s === 'error') setSimliFailed(true); }}
+                  />
+                )
                 : <Avatar id={avatarId} mouth={mouth} state={avatarState} size={170} />}
               <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
                 {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
@@ -340,7 +429,7 @@ function Classroom({
 
           <div className="controls">
             <button className="tbtn" onClick={() => goSegment(seg - 1)} disabled={seg === 0} aria-label={ui.type}>⏮</button>
-            <button className="tbtn play" onClick={() => (speaking ? stopAll() : play())} aria-label={ui.play}>{speaking ? '⏸' : '▶'}</button>
+            <button className="tbtn play" onClick={togglePlay} aria-label={ui.play}>{speaking ? '⏸' : '▶'}</button>
             <button className="tbtn" onClick={() => goSegment(seg + 1)} disabled={isLast} aria-label={ui.next}>⏭</button>
             <div className="progress">
               <span>{`${ui.module} ${mod.order || ''} · ${seg + 1}/${mod.segments.length}`}</span>
@@ -379,8 +468,8 @@ function Classroom({
           </div>
           <div className="ask">
             <div className="mode">
-              <button className={!voiceMode ? 'sel' : ''} onClick={() => setVoiceMode(false)}>⌨ {ui.type}</button>
-              <button className={voiceMode ? 'sel' : ''} onClick={() => setVoiceMode(true)}>🎙 {ui.speak}</button>
+              <button className={!voiceMode ? 'sel' : ''} onClick={() => stopVoiceMode()}>⌨ {ui.type}</button>
+              <button className={voiceMode ? 'sel' : ''} onClick={startVoiceMode}>🎙 {ui.speak}</button>
             </div>
             {!voiceMode ? (
               <div className="ask-row">
@@ -391,7 +480,7 @@ function Classroom({
               </div>
             ) : (
               <div className="voice">
-                <button className="mic" onClick={startVoice} aria-label={ui.speak}>🎙</button>
+                <span className="mic-live" aria-hidden="true" />
                 <span className="hint">{ui.holdToTalk}</span>
               </div>
             )}

@@ -35,7 +35,7 @@
   "listening": "In ascolto",
   "speaking": "Parla",
   "onTopicSource": "fonte",
-  "holdToTalk": "Tocca il microfono, parla, si invia da solo",
+  "holdToTalk": "Il microfono è acceso — parla pure. Si spegne quando abbassi la mano.",
   "voiceUnsupported": "L'input vocale non è supportato in questo browser — scrivi invece.",
   "thinking": "Sto pensando…",
   "voiceReplies": "Risposte vocali",
