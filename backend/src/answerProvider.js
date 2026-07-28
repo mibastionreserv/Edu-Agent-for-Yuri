@@ -36,12 +36,18 @@ export async function getAnswer({ question, lang, module, history = [] }) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify({ model, messages: msgs, temperature: 0.3, max_tokens: 300 }),
     });
-    if (!res.ok) throw new Error(`LLM ${res.status}`);
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '');
+      // Temporary diagnostic: log why the LLM call failed (never logs the key).
+      console.error(`[llm] request failed: ${res.status} ${res.statusText} base=${base} model=${model} body=${bodyText.slice(0, 500)}`);
+      throw new Error(`LLM ${res.status}`);
+    }
     const data = await res.json();
     const text = data.choices?.[0]?.message?.content?.trim();
     if (!text) throw new Error('empty LLM answer');
     return { topicality: 'on', answer: text, source: local.source, sources: local.sources, intent: local.intent, provider: 'llm' };
-  } catch {
+  } catch (err) {
+    console.error(`[llm] falling back to local: ${err && err.message}`);
     return { ...local, provider: 'local' };
   }
 }
