@@ -38,8 +38,8 @@ input{font-family:inherit}
 .auth-card .primary{width:100%;margin-top:6px}
 
 /* shell + appbar */
-.shell{max-width:1100px;margin:0 auto;min-height:100vh}
-.appbar{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line)}
+.shell{max-width:1100px;margin:0 auto;min-height:100vh;height:100vh;display:flex;flex-direction:column}
+.appbar{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line)}
 .appbar-right{display:flex;align-items:center;gap:12px}
 .who{color:var(--muted-2);font-size:13px}
 .lang{display:flex;background:rgba(255,255,255,.06);border-radius:9px;padding:3px}
@@ -73,23 +73,34 @@ input{font-family:inherit}
 .mrow .mmin{color:var(--teal);font-family:monospace;font-size:12px;grid-row:1;grid-column:2}
 
 /* classroom */
-.room{margin:16px;background:linear-gradient(180deg,#1a2934,#16232E);border:1px solid var(--line);border-radius:16px;overflow:hidden}
-.topbar{display:flex;justify-content:space-between;align-items:center;padding:13px 18px;border-bottom:1px solid var(--line)}
+/* The classroom fits one screen: .room takes whatever height is left below
+   the appbar and never grows past it (overflow:hidden). Only two areas ever
+   get their own scrollbar: .captions and the Q&A thread/panel — the board,
+   presenter and controls always fit. */
+.room{margin:16px;background:linear-gradient(180deg,#1a2934,#16232E);border:1px solid var(--line);border-radius:16px;
+  overflow:hidden;display:flex;flex-direction:column;flex:1;min-height:0}
+.topbar{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;padding:13px 18px;border-bottom:1px solid var(--line)}
 .crumb{display:flex;gap:10px;align-items:center;font-size:14px}
 .crumb .mod{color:var(--yellow);font-family:monospace}
-.stage{display:grid;grid-template-columns:260px 1fr;min-height:360px}
-.presenter{border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:18px}
+.stage{display:grid;grid-template-columns:260px 1fr;grid-template-rows:minmax(0,1fr);min-height:360px}
+.presenter{border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:18px;overflow:hidden}
 .badge{margin-top:8px;font-size:12px;font-family:monospace;color:var(--muted-2);background:rgba(255,255,255,.06);padding:6px 12px;border-radius:20px}
 .badge.on{color:#8ff0e4;background:rgba(23,183,166,.16);border:1px solid rgba(23,183,166,.4)}
-.board-col{padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0}
-.board{flex:1;background:var(--board);border-radius:12px;border:1px solid var(--board-line);position:relative;min-height:230px;padding:14px;overflow:hidden}
+.board-col{padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
+.board{flex:1;min-height:0;background:var(--board);border-radius:12px;border:1px solid var(--board-line);position:relative;padding:14px;overflow:hidden}
 .board-title{font-size:12px;font-family:monospace;color:#8a6a00;background:var(--yellow);display:inline-block;padding:3px 9px;border-radius:6px}
 .board-img{display:block;max-width:100%;max-height:210px;margin:10px auto 0}
 .sticky{position:absolute;right:18px;top:60px;background:var(--yellow);color:#5c4600;font-size:12px;font-weight:600;padding:9px 11px;border-radius:3px;transform:rotate(-3deg);box-shadow:3px 5px 12px rgba(20,32,43,.16);max-width:150px}
-.captions{background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:11px;padding:12px 15px;font-size:14.5px;line-height:1.55;min-height:52px}
+/* Default (captions off, or knowledge-check showing): board takes the whole
+   column. Toggling captions on halves the board and gives captions the other
+   half, scrolling internally if the text runs long — the column height never
+   changes, so the rest of the screen never has to reflow. */
+.captions{flex:0 0 auto;max-height:45%;overflow:auto;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:11px;padding:12px 15px;font-size:14.5px;line-height:1.55;min-height:52px}
+.board-col.with-captions .board{flex:0 0 50%}
+.board-col.with-captions .captions{flex:1 1 50%;max-height:none;min-height:0}
 .cc-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
 .kw{color:var(--yellow);font-weight:600}
-.controls{display:flex;align-items:center;gap:10px;padding:13px 18px;border-top:1px solid var(--line);flex-wrap:wrap}
+.controls{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:13px 18px;border-top:1px solid var(--line);flex-wrap:wrap}
 .tbtn{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.06);border:0;color:#fff;font-size:15px}
 .tbtn.play{background:var(--teal);color:var(--slate-2)}
 .tbtn:disabled{opacity:.4}
@@ -101,16 +112,16 @@ input{font-family:inherit}
 .raise.lit{background:var(--coral);color:#fff;box-shadow:0 0 0 5px rgba(255,106,85,.25)}
 
 /* resizable split: presenter pane (left) + Q&A strip (right) */
-.split{display:flex;align-items:stretch;min-height:480px}
-.left-pane{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
-.left-pane .stage{flex:1;border-bottom:0}
+.split{display:flex;align-items:stretch;flex:1;min-height:0;overflow:hidden}
+.left-pane{flex:1 1 auto;min-width:0;min-height:0;display:flex;flex-direction:column}
+.left-pane .stage{flex:1;border-bottom:0;min-height:0;overflow:hidden}
 .divider{flex:0 0 8px;cursor:col-resize;background:transparent;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--line)}
 .divider:hover,.divider:focus-visible{background:rgba(23,183,166,.18);outline:none}
 .divider .grip{width:3px;height:42px;border-radius:3px;background:var(--muted)}
-.right-pane{flex:0 0 auto;display:flex;flex-direction:column;background:var(--slate-2);min-width:240px;max-width:640px}
-.right-pane .qa-head{padding:13px 14px 10px;border-bottom:1px solid var(--line);margin:0}
-.right-pane .qa-thread{flex:1;overflow:auto;max-height:none;padding:14px;margin:0}
-.right-pane .ask{margin:12px}
+.right-pane{flex:0 0 auto;min-height:0;display:flex;flex-direction:column;background:var(--slate-2);min-width:240px;max-width:640px}
+.right-pane .qa-head{flex:0 0 auto;padding:13px 14px 10px;border-bottom:1px solid var(--line);margin:0}
+.right-pane .qa-thread{flex:1;min-height:0;overflow:auto;max-height:none;padding:14px;margin:0}
+.right-pane .ask{flex:0 0 auto;margin:12px}
 .qa-hint{color:var(--muted-2);font-size:13px;text-align:center;padding:24px 8px;line-height:1.5}
 
 /* Q&A */
@@ -139,11 +150,20 @@ input{font-family:inherit}
 .voice .hint{font-size:12px;color:var(--muted-2)}
 
 @media(max-width:820px){
-  .stage{grid-template-columns:1fr}.presenter{border-right:0;border-bottom:1px solid var(--line)}
+  /* Narrow screens: the one-screen-fit layout doesn't have room for a side-by-
+     side board + Q&A, so fall back to the classic stacked layout and let the
+     page scroll normally instead of clipping content. */
+  .shell{height:auto;min-height:100vh}
+  .room{flex:none;min-height:0;overflow:visible}
+  .split{flex:none;min-height:0;overflow:visible;flex-direction:column}
+  .left-pane{min-height:0}
+  .left-pane .stage{overflow:visible;min-height:0}
+  .stage{grid-template-columns:1fr;grid-template-rows:none}.presenter{border-right:0;border-bottom:1px solid var(--line)}
+  .board-col.with-captions .board{flex:0 0 auto;min-height:230px}
+  .board-col.with-captions .captions{flex:0 0 auto;max-height:220px}
   .cards{grid-template-columns:1fr}
-  .split{flex-direction:column}
   .divider{display:none}
-  .right-pane{width:auto!important;max-width:none;border-top:1px solid var(--line)}
+  .right-pane{width:auto!important;max-width:none;min-height:0;border-top:1px solid var(--line)}
   .right-pane .qa-thread{max-height:300px}
 }
 
@@ -167,7 +187,7 @@ input{font-family:inherit}
 .simli-hint.err{color:#ff9b8a}
 .simli-btn{background:var(--yellow);color:var(--slate-2);font-weight:600;border-radius:8px;padding:8px 12px;font-size:12.5px}
 .simli-btn-stop{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;font-weight:500}
-.board-svg{width:100%;height:100%;min-height:300px;display:block}
+.board-svg{width:100%;height:100%;display:block}
 .board{display:flex}
 .cards{grid-template-columns:repeat(4,1fr);max-width:940px}
 .mrow{grid-template-columns:auto 1fr auto}

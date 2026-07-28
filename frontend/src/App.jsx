@@ -46,14 +46,13 @@ const SIMLI_FACES = {
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
   // replaces the drawn SVG automatically, no code change needed per persona.
+  // Personas with a live Simli face (SIMLI_FACES) still use this static
+  // photo/SVG avatar for the picker and normal narration — no mic, no video
+  // connection — and only swap to the live SimliAvatar video for the duration
+  // of an actual spoken question (see Classroom's liveTalking state).
   const [photoFailed, setPhotoFailed] = useState(false);
   const dims = { width: size, height: size * 1.15 };
   const lm = PHOTO_LANDMARKS[id];
-  const simliFaceId = SIMLI_FACES[id];
-
-  if (simliFaceId) {
-    return <SimliAvatar faceId={simliFaceId} size={size} />;
-  }
 
   if (!photoFailed) {
     return (
@@ -120,6 +119,14 @@ function Classroom({
   const threadRef = useRef([]);
   threadRef.current = thread;
 
+  // Live Simli video avatar: only mounted/connected for the duration of an
+  // actual spoken question (see startVoice/stopVoiceCapture), never on the
+  // picker screen or during normal narration.
+  const simliFaceId = SIMLI_FACES[avatarId];
+  const simliRef = useRef(null);
+  const micStreamRef = useRef(null);
+  const [liveTalking, setLiveTalking] = useState(false);
+
   const QA_MIN = 260; const QA_MAX = 640; const QA_DEFAULT = 320;
   const splitRef = useRef(null);
   const [qaWidth, setQaWidth] = useState(() => {
@@ -180,6 +187,19 @@ function Classroom({
     if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
     cancelSpeech();
     setSpeaking(false); setMouth(false);
+    stopVoiceCapture();
+  }
+
+  // Tears down the live Simli video + mic — called when a voice question
+  // finishes (result/error/end) and whenever the lesson resumes narration, so
+  // the live connection never outlives the moment the learner is speaking.
+  function stopVoiceCapture() {
+    if (simliRef.current) simliRef.current.stop();
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      micStreamRef.current = null;
+    }
+    setLiveTalking(false);
   }
 
   async function speakWithMouth(text, { onEnd, driveBoard } = {}) {
@@ -243,13 +263,32 @@ function Classroom({
   }
 
   function startVoice() {
+    // Pressing Speak is the one and only mic trigger: it starts speech
+    // recognition *and*, for personas with a live Simli face, opens the video
+    // connection and feeds it the same mic track — both torn down the moment
+    // the question is captured (or recognition ends/errors) so the mic is
+    // never listening while the presenter is talking.
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert(ui.voiceUnsupported); return; }
     cancelSpeech();
     const rec = new SR();
     rec.lang = langTag(lang);
-    rec.onresult = (ev) => submitQuestion(ev.results[0][0].transcript, true);
+    rec.onresult = (ev) => { stopVoiceCapture(); submitQuestion(ev.results[0][0].transcript, true); };
+    rec.onerror = () => stopVoiceCapture();
+    rec.onend = () => stopVoiceCapture();
     rec.start();
+
+    if (simliFaceId) {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        micStreamRef.current = stream;
+        setLiveTalking(true);
+        // Give the SimliAvatar <video>/<audio> elements a tick to mount
+        // before wiring the client to them.
+        requestAnimationFrame(() => {
+          if (simliRef.current) simliRef.current.start(stream.getAudioTracks()[0], simliFaceId);
+        });
+      }).catch(() => { /* mic denied — voice recognition still works without the live face */ });
+    }
   }
 
   function goSegment(next) {
@@ -276,13 +315,15 @@ function Classroom({
         <div className="left-pane">
           <div className="stage">
             <div className="presenter">
-              <Avatar id={avatarId} mouth={mouth} state={avatarState} size={170} />
+              {liveTalking
+                ? <SimliAvatar ref={simliRef} size={170} />
+                : <Avatar id={avatarId} mouth={mouth} state={avatarState} size={170} />}
               <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
                 {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
               </div>
             </div>
 
-            <div className="board-col">
+            <div className={`board-col ${captionsOn && !showCheck ? 'with-captions' : ''}`}>
               <div className="board">
                 {showCheck && mod.check
                   ? <KnowledgeCheck check={mod.check} ui={ui} onClose={() => setShowCheck(false)} />
