@@ -82,11 +82,16 @@ input{font-family:inherit}
 .topbar{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;padding:13px 18px;border-bottom:1px solid var(--line)}
 .crumb{display:flex;gap:10px;align-items:center;font-size:14px}
 .crumb .mod{color:var(--yellow);font-family:monospace}
-.stage{display:grid;grid-template-columns:260px 1fr;grid-template-rows:minmax(0,1fr);min-height:360px}
-.presenter{border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:18px;overflow:hidden}
+/* The stage now only holds the whiteboard — the presenter lives in the
+   right-pane, next to Q&A (see .presenter-inline below). */
+.stage{display:flex;min-height:360px}
+.presenter{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:18px;overflow:hidden}
+/* Compact horizontal presenter block docked above the Q&A panel. */
+.presenter-inline{flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.presenter-inline .badge{margin-top:0}
 .badge{margin-top:8px;font-size:12px;font-family:monospace;color:var(--muted-2);background:rgba(255,255,255,.06);padding:6px 12px;border-radius:20px}
 .badge.on{color:#8ff0e4;background:rgba(23,183,166,.16);border:1px solid rgba(23,183,166,.4)}
-.board-col{padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
+.board-col{flex:1;padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
 .board{flex:1;min-height:0;background:var(--board);border-radius:12px;border:1px solid var(--board-line);position:relative;padding:14px;overflow:hidden}
 .board-title{font-size:12px;font-family:monospace;color:#8a6a00;background:var(--yellow);display:inline-block;padding:3px 9px;border-radius:6px}
 .board-img{display:block;max-width:100%;max-height:210px;margin:10px auto 0}
@@ -160,7 +165,6 @@ input{font-family:inherit}
   .split{flex:none;min-height:0;overflow:visible;flex-direction:column}
   .left-pane{min-height:0}
   .left-pane .stage{overflow:visible;min-height:0}
-  .stage{grid-template-columns:1fr;grid-template-rows:none}.presenter{border-right:0;border-bottom:1px solid var(--line)}
   .board-col.with-captions .board{flex:0 0 auto;min-height:230px}
   .board-col.with-captions .captions{flex:0 0 auto;max-height:220px}
   .cards{grid-template-columns:1fr}
@@ -183,6 +187,14 @@ input{font-family:inherit}
 .ap-mouth.open{transform:translate(-50%,-30%) scaleY(1)}
 .simli-avatar{position:relative;overflow:hidden;border-radius:14px;background:#0c1620}
 .simli-avatar video{width:100%;height:100%;object-fit:cover;display:block}
+
+/* Full-screen blocking loader shown while a live avatar (Simli/Tavus) is
+   connecting for the first time — SRS §avatar-readiness requires the whole
+   UI to stay locked out until the avatar is truly ready, so the learner
+   never sees a static/half-animated presenter mid-connect. */
+.avatar-loading-overlay{position:fixed;inset:0;z-index:80;display:flex;align-items:center;
+  justify-content:center;background:rgba(11,17,22,.92);backdrop-filter:blur(2px)}
+.avatar-loading-overlay .state{padding:0;font-size:15px;color:#fff}
 .simli-overlay{position:absolute;inset:0;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;
   background:rgba(6,12,18,.72);text-align:center;padding:10px}
 .simli-hint{color:#cdd6dd;font-size:12px;max-width:90%}

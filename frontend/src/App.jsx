@@ -122,7 +122,9 @@ function Classroom({
   const [asking, setAsking] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceReplies, setVoiceReplies] = useState(true);
-  const [captionsOn, setCaptionsOn] = useState(true);
+  // Off by default per SRS §UI — captions are opt-in via the caption chip,
+  // not shown automatically.
+  const [captionsOn, setCaptionsOn] = useState(false);
   const [showCheck, setShowCheck] = useState(false);
   const [voiceName, setVoiceName] = useState('');
   const [paused, setPaused] = useState(false);
@@ -130,6 +132,11 @@ function Classroom({
   const [liveNarration, setLiveNarration] = useState(false);
   const [tavusFailed, setTavusFailed] = useState(false);
   const [tavusLive, setTavusLive] = useState(false);
+  // True while a live avatar (Simli or Tavus) is connecting for the first
+  // time this lesson — blocks the whole UI behind a full-screen loader so
+  // the learner never sees a static/half-animated avatar mid-connect (SRS
+  // §avatar-readiness). Never true for personas without a live avatar.
+  const [avatarConnecting, setAvatarConnecting] = useState(false);
   const mouthTimer = useRef(null);
   const stopSpeechRef = useRef(null);
   const threadRef = useRef([]);
@@ -284,32 +291,55 @@ function Classroom({
   const narrationAudioRef = useRef(null);
 
   // Grabs the narration <audio> element's own output as a live track and
-  // hands it to Simli, once, the first time server TTS actually plays.
-  // A Simli connection with no audio at all goes idle and eventually blacks
-  // out (confirmed by hand), so this is what makes the live video worth
-  // showing at all — if captureStream isn't supported, we silently keep
-  // using the static animated photo instead.
+  // hands it to Simli — captureStream() can be called before the element
+  // ever plays anything; the track just carries silence until real audio
+  // starts flowing through the element, so this can (and must) run BEFORE
+  // el.play() rather than after. That's what lets speakViaServerTts wait for
+  // Simli to actually report "live" before starting playback at all, instead
+  // of playing audio immediately against a static photo and swapping to
+  // video mid-sentence once Simli catches up (SRS §avatar-readiness).
+  //
+  // Returns a promise resolving true once Simli reports 'live', or false on
+  // error/unsupported (caller falls back to the static photo). Only ever
+  // attempts once per lesson — cached in simliConnectReadyRef.
+  const simliConnectReadyRef = useRef(null);
+  const simliConnectResolveRef = useRef(null);
   function ensureLiveAvatarFromElement(el) {
-    if (!simliFaceId || simliAttemptedRef.current) return;
-    simliAttemptedRef.current = true;
-    try {
-      const captureFn = el.captureStream || el.mozCaptureStream;
-      if (!captureFn) return;
-      const stream = captureFn.call(el);
-      const track = stream.getAudioTracks()[0];
-      if (!track) return;
-      narrationStreamRef.current = stream;
-      pendingAudioTrackRef.current = track;
-      setSimliFailed(false);
-      setLiveNarration(true);
-    } catch {
-      // Unsupported — silently keep the static animated photo.
-    }
+    if (!simliFaceId) return Promise.resolve(false);
+    if (simliConnectReadyRef.current) return simliConnectReadyRef.current;
+    simliConnectReadyRef.current = new Promise((resolve) => {
+      if (simliAttemptedRef.current) { resolve(false); return; }
+      simliAttemptedRef.current = true;
+      try {
+        const captureFn = el.captureStream || el.mozCaptureStream;
+        if (!captureFn) { resolve(false); return; }
+        const stream = captureFn.call(el);
+        const track = stream.getAudioTracks()[0];
+        if (!track) { resolve(false); return; }
+        narrationStreamRef.current = stream;
+        pendingAudioTrackRef.current = track;
+        simliConnectResolveRef.current = resolve;
+        // captureStream() taps the element's decoded audio before the
+        // volume/mute stage, so muting local playback here does NOT affect
+        // what Simli receives — it only stops the learner hearing the same
+        // line twice (once locally, once relayed back via Simli's own
+        // lip-synced audio track).
+        el.muted = true;
+        setSimliFailed(false);
+        setLiveNarration(true); // mounts <SimliAvatar>; effect below calls .start()
+      } catch {
+        resolve(false); // Unsupported — silently keep the static animated photo.
+      }
+    });
+    return simliConnectReadyRef.current;
   }
 
   // Fires once <SimliAvatar> actually mounts (right after
   // ensureLiveAvatarFromElement sets liveNarration true) and hands it the
-  // audio track we already captured.
+  // audio track we already captured. Resolving simliConnectResolveRef is done
+  // from the SimliAvatar onStatusChange callback in the JSX below (status
+  // 'live'/'error'), not here — .start() resolving just means the client
+  // object was created, not that the WebRTC connection is actually up.
   useEffect(() => {
     if (!liveNarration || !simliRef.current || !pendingAudioTrackRef.current) return;
     const track = pendingAudioTrackRef.current;
@@ -351,7 +381,10 @@ function Classroom({
   async function speakViaTavus(text, {
     charOffset, textLen, driveBoard, nSteps, finish,
   }) {
+    const alreadyConnected = Boolean(tavusReadyRef.current);
+    if (!alreadyConnected) setAvatarConnecting(true);
     const ok = await ensureTavusAvatar();
+    setAvatarConnecting(false);
     if (!ok || !tavusRef.current) return false;
 
     let resolveStopped;
@@ -387,6 +420,14 @@ function Classroom({
   // currentTime/duration — far more accurate than the Web Speech estimate
   // below. Returns true if it handled playback, false if the caller should
   // fall back to the browser's Web Speech API (TTS unavailable/failed).
+  //
+  // Connection order matters here (SRS §avatar-readiness): Simli is wired up
+  // to the audio element and awaited to reach 'live' status BEFORE el.play()
+  // is ever called, so the very first frame the learner sees already has
+  // real lip-sync — never a static photo with blinking lips that later swaps
+  // to video mid-sentence. A 10s cap keeps a stuck connection from hanging
+  // the lesson forever; if it doesn't come up in time we just fall back to
+  // the static photo and play the audio anyway.
   async function speakViaServerTts(text, {
     charOffset, textLen, driveBoard, nSteps, finish,
   }) {
@@ -400,6 +441,16 @@ function Classroom({
       return false; // TTS unavailable this time — Web Speech API takes over
     }
     el.src = objectUrl;
+
+    if (simliFaceId && !simliConnectReadyRef.current) {
+      setAvatarConnecting(true);
+      const ok = await Promise.race([
+        ensureLiveAvatarFromElement(el),
+        new Promise((resolve) => { setTimeout(() => resolve(false), 10000); }),
+      ]);
+      setAvatarConnecting(false);
+      if (!ok) setSimliFailed(true);
+    }
 
     let resolveDone;
     const done = new Promise((resolve) => { resolveDone = resolve; });
@@ -432,7 +483,6 @@ function Classroom({
       URL.revokeObjectURL(objectUrl);
       return false;
     }
-    ensureLiveAvatarFromElement(el); // first successful play wires Simli up
     await done;
     URL.revokeObjectURL(objectUrl);
     finish();
@@ -610,6 +660,11 @@ function Classroom({
 
   return (
     <div className="room">
+      {avatarConnecting && (
+        <div className="avatar-loading-overlay" role="alert" aria-live="assertive">
+          <Spinner label={ui.avatarLoading || 'Loading the presenter…'} />
+        </div>
+      )}
       <div className="topbar">
         <div className="crumb"><b>{course.title}</b><span>·</span><span className="mod">{mod.title}</span></div>
         <button className="ghost" onClick={onExit}>← {ui.moduleList}</button>
@@ -618,37 +673,6 @@ function Classroom({
       <div className="split" ref={splitRef}>
         <div className="left-pane">
           <div className="stage">
-            <div className="presenter">
-              {simliFaceId && liveNarration && !simliFailed ? (
-                <SimliAvatar
-                  ref={simliRef}
-                  size={170}
-                  onStatusChange={(s) => { if (s === 'error') setSimliFailed(true); }}
-                />
-              ) : isTavus && tavusLive && !tavusFailed ? (
-                <TavusAvatar
-                  ref={tavusRef}
-                  size={170}
-                  onStatusChange={(s) => { if (s === 'error') setTavusFailed(true); }}
-                  onStoppedSpeaking={() => {
-                    if (tavusStoppedResolveRef.current) {
-                      tavusStoppedResolveRef.current();
-                      tavusStoppedResolveRef.current = null;
-                    }
-                  }}
-                />
-              ) : (
-                <Avatar id={avatarId} mouth={mouth} state={avatarState} size={170} />
-              )}
-              <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
-                {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
-              </div>
-              {/* Hidden player for server-synthesized speech (Simli personas
-                  only) — never shown, its captureStream() is what feeds the
-                  live avatar; see ensureLiveAvatarFromElement. */}
-              {simliFaceId && <audio ref={narrationAudioRef} style={{ display: 'none' }} />}
-            </div>
-
             <div className={`board-col ${captionsOn && !showCheck ? 'with-captions' : ''}`}>
               <div className="board">
                 {showCheck && mod.check
@@ -665,15 +689,15 @@ function Classroom({
           </div>
 
           <div className="controls">
-            <button className="tbtn" onClick={() => goSegment(seg - 1)} disabled={seg === 0} aria-label={ui.type}>⏮</button>
-            <button className="tbtn play" onClick={togglePlay} aria-label={ui.play}>{speaking ? '⏸' : '▶'}</button>
-            <button className="tbtn" onClick={() => goSegment(seg + 1)} disabled={isLast} aria-label={ui.next}>⏭</button>
+            <button className="tbtn" onClick={() => goSegment(seg - 1)} disabled={avatarConnecting || seg === 0} aria-label={ui.type}>⏮</button>
+            <button className="tbtn play" onClick={togglePlay} disabled={avatarConnecting} aria-label={ui.play}>{speaking ? '⏸' : '▶'}</button>
+            <button className="tbtn" onClick={() => goSegment(seg + 1)} disabled={avatarConnecting || isLast} aria-label={ui.next}>⏭</button>
             <div className="progress">
               <span>{`${ui.module} ${mod.order || ''} · ${seg + 1}/${mod.segments.length}`}</span>
               <div className="track"><i style={{ width: `${((seg + 1) / mod.segments.length) * 100}%` }} /></div>
             </div>
-            <button className={`chip ${captionsOn ? 'on' : ''}`} onClick={() => setCaptionsOn((v) => !v)}>💬 {ui.captions}</button>
-            {mod.check && <button className={`chip ${showCheck ? 'on' : ''}`} onClick={() => { stopAll(); setShowCheck((v) => !v); }}>🎯 {ui.knowledgeCheck}</button>}
+            <button className={`chip ${captionsOn ? 'on' : ''}`} disabled={avatarConnecting} onClick={() => setCaptionsOn((v) => !v)}>💬 {ui.captions}</button>
+            {mod.check && <button className={`chip ${showCheck ? 'on' : ''}`} disabled={avatarConnecting} onClick={() => { stopAll(); setShowCheck((v) => !v); }}>🎯 {ui.knowledgeCheck}</button>}
             <button className={`raise ${handUp ? 'lit' : ''}`} onClick={raiseHand}>✋ {ui.raiseHand}</button>
           </div>
         </div>
@@ -683,6 +707,46 @@ function Classroom({
           onDoubleClick={() => persistWidth(QA_DEFAULT)}><span className="grip" /></div>
 
         <aside className="right-pane" style={{ width: qaWidth }}>
+          {/* Avatar sits right next to the Q&A panel it's answering into
+              (SRS §UI) — the whiteboard/stage area is dedicated to the
+              lesson content, not the presenter. */}
+          <div className="presenter presenter-inline">
+            {simliFaceId && liveNarration && !simliFailed ? (
+              <SimliAvatar
+                ref={simliRef}
+                size={72}
+                onStatusChange={(s) => {
+                  if (s === 'error') setSimliFailed(true);
+                  if ((s === 'live' || s === 'error') && simliConnectResolveRef.current) {
+                    simliConnectResolveRef.current(s === 'live');
+                    simliConnectResolveRef.current = null;
+                  }
+                }}
+              />
+            ) : isTavus && tavusLive && !tavusFailed ? (
+              <TavusAvatar
+                ref={tavusRef}
+                size={72}
+                onStatusChange={(s) => { if (s === 'error') setTavusFailed(true); }}
+                onStoppedSpeaking={() => {
+                  if (tavusStoppedResolveRef.current) {
+                    tavusStoppedResolveRef.current();
+                    tavusStoppedResolveRef.current = null;
+                  }
+                }}
+              />
+            ) : (
+              <Avatar id={avatarId} mouth={mouth} state={avatarState} size={72} />
+            )}
+            <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
+              {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
+            </div>
+            {/* Hidden player for server-synthesized speech (Simli personas
+                only) — never shown, its captureStream() is what feeds the
+                live avatar; see ensureLiveAvatarFromElement. */}
+            {simliFaceId && <audio ref={narrationAudioRef} style={{ display: 'none' }} />}
+          </div>
+
           <div className="qa-head">
             <b>💬 {ui.qaTitle}</b>
             <div className="qa-tools">
