@@ -3,6 +3,7 @@ import React, {
 } from 'react';
 import { api, getToken, setToken } from './api.js';
 import { avatarSVG } from './avatar.js';
+import SimliAvatar from './SimliAvatar.jsx';
 import Board from './Board.jsx';
 import KnowledgeCheck from './KnowledgeCheck.jsx';
 import {
@@ -36,12 +37,23 @@ const PHOTO_LANDMARKS = {
   mira: { mouthX: 50, mouthY: 47 },
 };
 
+// Personas backed by a live Simli video avatar (real WebRTC face + lip-sync)
+// instead of a static photo. Maps our avatar id -> Simli faceId.
+const SIMLI_FACES = {
+  meilin: '121cd5ae-7df7-4ea3-a389-401a9463db52', // "Edna" preset face
+};
+
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
   // replaces the drawn SVG automatically, no code change needed per persona.
   const [photoFailed, setPhotoFailed] = useState(false);
   const dims = { width: size, height: size * 1.15 };
   const lm = PHOTO_LANDMARKS[id];
+  const simliFaceId = SIMLI_FACES[id];
+
+  if (simliFaceId) {
+    return <SimliAvatar faceId={simliFaceId} size={size} />;
+  }
 
   if (!photoFailed) {
     return (

@@ -12,7 +12,8 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "roughjs": "^4.6.6"
+    "roughjs": "^4.6.6",
+    "simli-client": "^3.0.2"
   },
   "devDependencies": {
     "@testing-library/react": "^16.0.1",

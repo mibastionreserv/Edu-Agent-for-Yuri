@@ -175,6 +175,40 @@ export function createApp(pool) {
     return res.json({ ...result, speak: Boolean(askedByVoice) });
   });
 
+  // --- Simli live avatar: mint a short-lived session token server-side so the
+  // Simli API key never reaches the browser. Enabled only when SIMLI_API_KEY
+  // (and a faceId) are configured; the client falls back to the static photo
+  // avatar if this errors or isn't configured.
+  app.post('/api/simli-token', requireAuth, async (req, res) => {
+    const apiKey = process.env.SIMLI_API_KEY;
+    const faceId = (req.body && req.body.faceId) || process.env.SIMLI_FACE_ID;
+    if (!apiKey || !faceId) return res.status(503).json({ error: 'Live avatar is not configured.' });
+    try {
+      const simliRes = await fetch('https://api.simli.ai/compose/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-simli-api-key': apiKey },
+        body: JSON.stringify({
+          faceId,
+          apiVersion: 'v2',
+          audioInputFormat: 'pcm16',
+          maxSessionLength: 600,
+          maxIdleTime: 60,
+          // The client feeds Simli a live MediaStreamTrack (mic or TTS output)
+          // rather than discrete pre-buffered chunks, so silence handling is
+          // disabled per Simli's guidance for listenToMediastreamTrack().
+          handleSilence: false,
+        }),
+      });
+      const data = await simliRes.json();
+      if (!simliRes.ok || !data.session_token) {
+        return res.status(502).json({ error: data.detail || 'Simli rejected the session request.' });
+      }
+      return res.json({ session_token: data.session_token });
+    } catch {
+      return res.status(502).json({ error: 'Could not reach Simli.' });
+    }
+  });
+
   app.get('/api/questions', requireAuth, async (req, res) => {
     try {
       const { rows } = await pool.query(

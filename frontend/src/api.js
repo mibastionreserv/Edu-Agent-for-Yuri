@@ -40,5 +40,6 @@ export const api = {
   getProgress: () => request('/progress', { auth: true }),
   saveProgress: (b) => request('/progress', { method: 'PUT', body: b, auth: true }),
   ask: (b) => request('/ask', { method: 'POST', body: b, auth: true }),
+  simliToken: (faceId) => request('/simli-token', { method: 'POST', body: { faceId }, auth: true }),
 };
 
