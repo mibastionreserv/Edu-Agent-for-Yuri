@@ -195,6 +195,13 @@ input{font-family:inherit}
   background:radial-gradient(ellipse at center, rgba(80,32,28,.85) 0%, rgba(80,32,28,.45) 55%, rgba(80,32,28,0) 75%);
   filter:blur(1.5px);transform:translate(-50%,-30%) scaleY(.22);transform-origin:center;transition:transform .11s ease}
 .ap-mouth.open{transform:translate(-50%,-30%) scaleY(1)}
+/* Amplitude-driven lip-sync (photo personas): while narration plays through
+   the analyser, --mouth (0..1, written per animation frame from the real
+   audio level) drives how far the mouth opens — overriding the coarse
+   .open blink entirely. */
+.presenter-dock[data-lipsync] .ap-mouth{
+  transform:translate(-50%,-30%) scaleY(calc(.15 + .85 * var(--mouth, 0)));
+  transition:transform .05s linear}
 .simli-avatar{position:relative;overflow:hidden;border-radius:14px;background:#0c1620}
 .simli-avatar video{width:100%;height:100%;object-fit:cover;display:block}
 

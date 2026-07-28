@@ -319,6 +319,13 @@ function Classroom({
   const simliConnectResolveRef = useRef(null);
   const narrationCtxRef = useRef(null);
   const narrationSrcRef = useRef(null);
+  // Photo personas (Mira, Daniel fallback): an AnalyserNode on the narration
+  // element drives the mouth overlay from the REAL audio amplitude — the
+  // mouth opens exactly as loudly/quickly as the voice does, instead of the
+  // old fixed 220ms open/close blink. Written straight to a CSS variable on
+  // the presenter dock (no React re-renders at 60fps).
+  const mouthAnalyserRef = useRef(null);
+  const presenterDockRef = useRef(null);
   function ensureLiveAvatarFromElement(el) {
     if (!simliFaceId) return Promise.resolve(false);
     if (simliConnectReadyRef.current) return simliConnectReadyRef.current;
@@ -480,6 +487,28 @@ function Classroom({
     const el = narrationAudioRef.current;
     if (!el) return false;
 
+    // Photo personas: route the element through source → analyser →
+    // speakers. The analyser feeds the amplitude-driven mouth (below); the
+    // audio stays fully audible locally (unlike the Simli routing, which
+    // deliberately bypasses the speakers). Built once per lesson.
+    if (!simliFaceId && !mouthAnalyserRef.current) {
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) {
+          const ctx = new Ctx();
+          const srcNode = ctx.createMediaElementSource(el);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0.5;
+          srcNode.connect(analyser);
+          analyser.connect(ctx.destination);
+          narrationCtxRef.current = ctx;
+          narrationSrcRef.current = srcNode;
+          mouthAnalyserRef.current = analyser;
+        }
+      } catch { /* plain playback still works, mouth falls back to blink */ }
+    }
+
     // The connection itself is normally already up — it's pre-warmed on
     // classroom mount (see the effect above). Awaiting the cached promise is
     // then instant; the overlay only appears in the rare case the pre-warm
@@ -510,7 +539,10 @@ function Classroom({
         blob = await fetchTtsAudio(text, 'Gacrux');
       } catch {
         if (showOverlay) setAvatarConnecting(false);
-        return false; // TTS unavailable this time — Web Speech API takes over
+        // Web Speech takes over — let the blink fallback animate the mouth,
+        // since there's no audio stream to drive it from.
+        if (presenterDockRef.current) presenterDockRef.current.removeAttribute('data-lipsync');
+        return false;
       }
     }
     const objectUrl = URL.createObjectURL(blob);
@@ -549,9 +581,40 @@ function Classroom({
     const done = new Promise((resolve) => { resolveDone = resolve; });
     const onEnded = () => resolveDone();
     el.addEventListener('ended', onEnded, { once: true });
+
+    // Amplitude-driven mouth for photo personas: sample the analyser every
+    // frame and write the level into a CSS variable on the presenter dock —
+    // the mouth overlay's scaleY follows the actual loudness of the voice.
+    let mouthRafId = null;
+    const dockEl = presenterDockRef.current;
+    const stopMouthLoop = () => {
+      if (mouthRafId) { cancelAnimationFrame(mouthRafId); mouthRafId = null; }
+      if (dockEl) dockEl.style.setProperty('--mouth', '0');
+    };
+    if (!simliFaceId && mouthAnalyserRef.current && dockEl) {
+      dockEl.setAttribute('data-lipsync', '1');
+      const analyser = mouthAnalyserRef.current;
+      const buf = new Uint8Array(analyser.fftSize);
+      const tick = () => {
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i += 1) {
+          const d = (buf[i] - 128) / 128;
+          sum += d * d;
+        }
+        // RMS → 0..1 with a small floor cut so hiss doesn't twitch the lips.
+        const rms = Math.sqrt(sum / buf.length);
+        const level = Math.max(0, Math.min(1, (rms - 0.02) * 7));
+        dockEl.style.setProperty('--mouth', level.toFixed(3));
+        mouthRafId = requestAnimationFrame(tick);
+      };
+      mouthRafId = requestAnimationFrame(tick);
+    }
+
     // Reuses the same stopSpeechRef mechanism pauseNarration()/stopAll()
     // already call for the Web Speech path — no changes needed there.
     stopSpeechRef.current = () => {
+      stopMouthLoop();
       el.removeEventListener('ended', onEnded);
       el.pause();
       resolveDone();
@@ -576,6 +639,8 @@ function Classroom({
       await el.play();
     } catch {
       // Autoplay blocked or similar — fall back to Web Speech for this line.
+      stopMouthLoop();
+      if (dockEl) dockEl.removeAttribute('data-lipsync'); // let the blink fallback show
       if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
       el.removeEventListener('ended', onEnded);
       stopSpeechRef.current = null;
@@ -583,6 +648,7 @@ function Classroom({
       return false;
     }
     await done;
+    stopMouthLoop();
     URL.revokeObjectURL(objectUrl);
     finish();
     return true;
@@ -611,11 +677,12 @@ function Classroom({
       if (onEnd) onEnd();
     };
 
-    // Personas with a live Simli face get real, server-synthesized speech so
-    // the avatar's lip-sync matches her actual voice. Everyone else (and
-    // Simli personas if the TTS call fails) uses the browser's Web Speech
-    // API, same as always.
-    if (simliFaceId) {
+    // Everyone except Tavus personas gets real, server-synthesized speech:
+    // Simli personas need it as the lip-sync audio source, and photo
+    // personas (Mira, Daniel) use the same audio to drive the amplitude-
+    // based mouth — plus a far better voice than the browser's. Web Speech
+    // remains the fallback if the TTS call fails.
+    if (!isTavus) {
       const handled = await speakViaServerTts(text, {
         charOffset, textLen, driveBoard, nSteps, finish, myGen,
       });
@@ -798,7 +865,7 @@ function Classroom({
                 exact width (--presenter-w, SRS §UI). For live-avatar personas
                 the video here is the ONLY rendering — all animation comes
                 from the avatar service itself, never a photo or CSS mouth. */}
-            <div className="presenter-dock">
+            <div className="presenter-dock" ref={presenterDockRef}>
               {simliFaceId ? (
                 <SimliAvatar
                   ref={simliRef}
@@ -840,10 +907,12 @@ function Classroom({
               <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
                 {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
               </div>
-              {/* Hidden player for server-synthesized speech (Simli personas
-                  only) — never shown, its captureStream() is what feeds the
-                  live avatar; see ensureLiveAvatarFromElement. */}
-              {simliFaceId && <audio ref={narrationAudioRef} style={{ display: 'none' }} />}
+              {/* Hidden player for server-synthesized speech — for Simli
+                  personas its Web Audio routing feeds the live avatar's
+                  track; for photo personas it feeds the amplitude-driven
+                  mouth analyser. Tavus personas don't use it: Tavus does its
+                  own TTS server-side. */}
+              {!isTavus && <audio ref={narrationAudioRef} style={{ display: 'none' }} />}
             </div>
           </div>
 
