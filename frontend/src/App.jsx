@@ -326,6 +326,10 @@ function Classroom({
   // the presenter dock (no React re-renders at 60fps).
   const mouthAnalyserRef = useRef(null);
   const presenterDockRef = useRef(null);
+  // True once the first TTS line for a photo persona has been fetched —
+  // the full-screen loader is shown only for that first load, mirroring how
+  // live avatars show it only for their first connect.
+  const photoTtsWarmedRef = useRef(false);
   function ensureLiveAvatarFromElement(el) {
     if (!simliFaceId) return Promise.resolve(false);
     if (simliConnectReadyRef.current) return simliConnectReadyRef.current;
@@ -512,8 +516,12 @@ function Classroom({
     // The connection itself is normally already up — it's pre-warmed on
     // classroom mount (see the effect above). Awaiting the cached promise is
     // then instant; the overlay only appears in the rare case the pre-warm
-    // hasn't finished (or was skipped) by the time narration starts.
-    const showOverlay = Boolean(simliFaceId) && !simliUpRef.current;
+    // hasn't finished (or was skipped) by the time narration starts. Photo
+    // personas get the same blocking loader while their FIRST voice line is
+    // being synthesized, so the learner never watches a silent, motionless
+    // (or worse, twitching) photo waiting for audio.
+    const photoOverlay = !simliFaceId && !photoTtsWarmedRef.current;
+    const showOverlay = (Boolean(simliFaceId) && !simliUpRef.current) || photoOverlay;
     if (showOverlay) setAvatarConnecting(true);
     const simliPromise = simliFaceId
       ? Promise.race([
@@ -538,6 +546,7 @@ function Classroom({
       try {
         blob = await fetchTtsAudio(text, 'Gacrux');
       } catch {
+        photoTtsWarmedRef.current = true; // don't re-show the loader per line
         if (showOverlay) setAvatarConnecting(false);
         // Web Speech takes over — let the blink fallback animate the mouth,
         // since there's no audio stream to drive it from.
@@ -545,6 +554,7 @@ function Classroom({
         return false;
       }
     }
+    photoTtsWarmedRef.current = true;
     const objectUrl = URL.createObjectURL(blob);
 
     // A newer speakWithMouth() call (segment change, pause, raise hand)
@@ -637,8 +647,14 @@ function Classroom({
         narrationCtxRef.current.resume().catch(() => {});
       }
       await el.play();
+      // Voice is actually flowing now — drop the first-load overlay and (for
+      // photo personas) turn on the gentle speaking bob; the mouth itself is
+      // driven by the amplitude loop, not by this flag.
+      if (photoOverlay) setAvatarConnecting(false);
+      if (!simliFaceId && mouthAnalyserRef.current) setMouth(true);
     } catch {
       // Autoplay blocked or similar — fall back to Web Speech for this line.
+      if (showOverlay) setAvatarConnecting(false);
       stopMouthLoop();
       if (dockEl) dockEl.removeAttribute('data-lipsync'); // let the blink fallback show
       if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
@@ -660,8 +676,12 @@ function Classroom({
     const myGen = ++speechGenRef.current;
     setSpeaking(true);
     interruptedRef.current = false;
+    // NOTE: the 220ms mouth blink is NOT started here anymore — it made the
+    // photo twitch while the TTS audio was still loading, before any sound.
+    // The amplitude loop drives the mouth on the server-TTS path; the blink
+    // only starts below, together with the Web Speech fallback actually
+    // speaking.
     if (mouthTimer.current) clearInterval(mouthTimer.current);
-    mouthTimer.current = setInterval(() => setMouth((v) => !v), 220);
     const textLen = fullLen ?? (text || '').length;
     const nSteps = driveBoard ? steps.length : 0;
     if (driveBoard && charOffset === 0) setRevealed(nSteps > 0 ? 1 : 0);
@@ -698,6 +718,11 @@ function Classroom({
       });
       if (handled) return;
     }
+
+    // Web Speech fallback from here on — the coarse 220ms blink is the only
+    // available mouth animation (no audio stream to measure), started only
+    // now, when the fallback is actually about to speak.
+    mouthTimer.current = setInterval(() => setMouth((v) => !v), 220);
 
     // Chrome's SpeechSynthesisUtterance "boundary" event doesn't fire at all
     // for some network voices (confirmed: zero boundary events over a full
