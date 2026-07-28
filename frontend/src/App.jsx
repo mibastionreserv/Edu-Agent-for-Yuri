@@ -4,6 +4,7 @@ import React, {
 import { api, getToken, setToken, fetchTtsAudio } from './api.js';
 import { avatarSVG } from './avatar.js';
 import SimliAvatar from './SimliAvatar.jsx';
+import TavusAvatar from './TavusAvatar.jsx';
 import Board from './Board.jsx';
 import KnowledgeCheck from './KnowledgeCheck.jsx';
 import {
@@ -43,6 +44,13 @@ const PHOTO_LANDMARKS = {
 const SIMLI_FACES = {
   meilin: '121cd5ae-7df7-4ea3-a389-401a9463db52', // "Edna" preset face
 };
+
+// Personas backed by a live Tavus video avatar instead. Tavus's PAL for
+// Amara is pre-configured server-side in "echo" pipeline mode (see
+// backend/src/tavus.js) — Tavus's own TTS + Phoenix engine handle voice
+// synthesis and lip-synced rendering, so there's no local audio pipeline for
+// this persona at all, unlike Simli/Mei-Lin.
+const TAVUS_PERSONAS = { amara: true };
 
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
@@ -120,6 +128,8 @@ function Classroom({
   const [paused, setPaused] = useState(false);
   const [simliFailed, setSimliFailed] = useState(false);
   const [liveNarration, setLiveNarration] = useState(false);
+  const [tavusFailed, setTavusFailed] = useState(false);
+  const [tavusLive, setTavusLive] = useState(false);
   const mouthTimer = useRef(null);
   const stopSpeechRef = useRef(null);
   const threadRef = useRef([]);
@@ -145,6 +155,15 @@ function Classroom({
   const narrationStreamRef = useRef(null);
   const recognitionRef = useRef(null);
   const voiceModeRef = useRef(false);
+
+  // Live Tavus video avatar (Amara): connecting is async and Tavus is the
+  // *only* audio source for this persona, so the first speak has to await a
+  // real connection before it can say anything (see ensureTavusAvatar).
+  const isTavus = Boolean(TAVUS_PERSONAS[avatarId]);
+  const tavusRef = useRef(null);
+  const tavusReadyRef = useRef(null); // Promise<boolean>, set once connecting starts
+  const tavusStartResolveRef = useRef(null);
+  const tavusStoppedResolveRef = useRef(null);
 
   const QA_MIN = 260; const QA_MAX = 640; const QA_DEFAULT = 320;
   const splitRef = useRef(null);
@@ -299,6 +318,70 @@ function Classroom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveNarration]);
 
+  // Mounts <TavusAvatar> (if not already) and returns a promise that
+  // resolves once it's actually connected (or false on failure). Callers
+  // must await this before sending the first line — unlike Simli, Tavus is
+  // the only source of audio here, so there's nothing to hear until the
+  // Daily call is actually joined.
+  function ensureTavusAvatar() {
+    if (!isTavus) return Promise.resolve(false);
+    if (tavusReadyRef.current) return tavusReadyRef.current;
+    tavusReadyRef.current = new Promise((resolve) => { tavusStartResolveRef.current = resolve; });
+    setTavusLive(true); // mounts <TavusAvatar>; the effect below calls .start()
+    return tavusReadyRef.current;
+  }
+
+  // Fires once <TavusAvatar> actually mounts (right after ensureTavusAvatar
+  // sets tavusLive true) and kicks off the connection.
+  useEffect(() => {
+    if (!tavusLive || !tavusRef.current) return;
+    tavusRef.current.start().then((conversationId) => {
+      if (tavusStartResolveRef.current) {
+        tavusStartResolveRef.current(Boolean(conversationId));
+        tavusStartResolveRef.current = null;
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tavusLive]);
+
+  // Broadcasts narration text to the live Tavus avatar and waits for Tavus's
+  // own conversation.stopped_speaking event before resolving — that's the
+  // real end of speech (Tavus does its own TTS + lip-synced video), not a
+  // local audio element finishing. Returns true if it handled playback.
+  async function speakViaTavus(text, {
+    charOffset, textLen, driveBoard, nSteps, finish,
+  }) {
+    const ok = await ensureTavusAvatar();
+    if (!ok || !tavusRef.current) return false;
+
+    let resolveStopped;
+    const stopped = new Promise((resolve) => { resolveStopped = resolve; });
+    tavusStoppedResolveRef.current = resolveStopped;
+    // Reuses the same stopSpeechRef mechanism pauseNarration()/stopAll()
+    // already call — but for Tavus this must also tell the PAL server-side
+    // to actually stop talking, not just resolve our local promise.
+    stopSpeechRef.current = () => {
+      tavusStoppedResolveRef.current = null;
+      if (tavusRef.current) tavusRef.current.interrupt();
+      resolveStopped();
+    };
+
+    const CHARS_PER_MS = 0.0152; // same estimate used for the Web Speech fallback
+    const startedAt = Date.now();
+    if (driveBoard) {
+      progressTimerRef.current = setInterval(() => {
+        const estAbs = charOffset + (Date.now() - startedAt) * CHARS_PER_MS;
+        lastCharRef.current = Math.max(lastCharRef.current, Math.min(estAbs, textLen));
+        setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
+      }, 200);
+    }
+
+    tavusRef.current.sendText(text);
+    await stopped;
+    finish();
+    return true;
+  }
+
   // Synthesizes text on the backend (Gemini TTS) and plays it through the
   // hidden narration <audio> element, tracking progress from its real
   // currentTime/duration — far more accurate than the Web Speech estimate
@@ -384,6 +467,16 @@ function Classroom({
     // API, same as always.
     if (simliFaceId) {
       const handled = await speakViaServerTts(text, {
+        charOffset, textLen, driveBoard, nSteps, finish,
+      });
+      if (handled) return;
+    }
+
+    // Amara: try the live Tavus avatar first — real voice + lip-synced video,
+    // rendered entirely on Tavus's end. Falls through to Web Speech below if
+    // the conversation can't be started (offline, quota, misconfigured).
+    if (isTavus) {
+      const handled = await speakViaTavus(text, {
         charOffset, textLen, driveBoard, nSteps, finish,
       });
       if (handled) return;
@@ -526,15 +619,27 @@ function Classroom({
         <div className="left-pane">
           <div className="stage">
             <div className="presenter">
-              {simliFaceId && liveNarration && !simliFailed
-                ? (
-                  <SimliAvatar
-                    ref={simliRef}
-                    size={170}
-                    onStatusChange={(s) => { if (s === 'error') setSimliFailed(true); }}
-                  />
-                )
-                : <Avatar id={avatarId} mouth={mouth} state={avatarState} size={170} />}
+              {simliFaceId && liveNarration && !simliFailed ? (
+                <SimliAvatar
+                  ref={simliRef}
+                  size={170}
+                  onStatusChange={(s) => { if (s === 'error') setSimliFailed(true); }}
+                />
+              ) : isTavus && tavusLive && !tavusFailed ? (
+                <TavusAvatar
+                  ref={tavusRef}
+                  size={170}
+                  onStatusChange={(s) => { if (s === 'error') setTavusFailed(true); }}
+                  onStoppedSpeaking={() => {
+                    if (tavusStoppedResolveRef.current) {
+                      tavusStoppedResolveRef.current();
+                      tavusStoppedResolveRef.current = null;
+                    }
+                  }}
+                />
+              ) : (
+                <Avatar id={avatarId} mouth={mouth} state={avatarState} size={170} />
+              )}
               <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
                 {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
               </div>

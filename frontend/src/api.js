@@ -42,6 +42,8 @@ export const api = {
   ask: (b) => request('/ask', { method: 'POST', body: b, auth: true }),
   simliToken: (faceId) => request('/simli-token', { method: 'POST', body: { faceId }, auth: true }),
   simliIce: () => request('/simli-ice', { auth: true }),
+  tavusStart: () => request('/tavus-conversation', { method: 'POST', auth: true }),
+  tavusEnd: (id) => request(`/tavus-conversation/${id}/end`, { method: 'POST', auth: true }),
 };
 
 // Server-generated speech audio (WAV, binary) — bypasses the JSON-only

@@ -10,6 +10,7 @@ import {
 } from './content.js';
 import { getAnswer } from './answerProvider.js';
 import { synthesizeSpeech } from './tts.js';
+import { createConversation, endConversation } from './tavus.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -248,6 +249,27 @@ export function createApp(pool) {
       console.error(`[tts] falling back to client speech: ${err && err.message}`);
       return res.status(502).json({ error: 'TTS is unavailable.' });
     }
+  });
+
+  // --- Tavus live avatar (Amara): mint a conversation server-side so the
+  // Tavus API key never reaches the browser. Enabled only when
+  // TAVUS_API_KEY and TAVUS_PERSONA_ID are configured; the client keeps the
+  // static photo avatar if this errors or isn't configured.
+  app.post('/api/tavus-conversation', requireAuth, async (_req, res) => {
+    try {
+      const { conversationId, conversationUrl } = await createConversation({});
+      return res.json({ conversationId, conversationUrl });
+    } catch (err) {
+      console.error(`[tavus] could not start conversation: ${err && err.message}`);
+      return res.status(503).json({ error: (err && err.message) || 'Tavus is unavailable.' });
+    }
+  });
+
+  // Ends a conversation early (learner left the lesson) so free-tier
+  // minutes aren't burned by an idle call. Best-effort — always 200s.
+  app.post('/api/tavus-conversation/:id/end', requireAuth, async (req, res) => {
+    await endConversation(req.params.id);
+    return res.json({ ok: true });
   });
 
   app.get('/api/questions', requireAuth, async (req, res) => {
