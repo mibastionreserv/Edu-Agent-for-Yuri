@@ -700,13 +700,20 @@ function Classroom({
     // Everyone except Tavus personas gets real, server-synthesized speech:
     // Simli personas need it as the lip-sync audio source, and photo
     // personas (Mira, Daniel) use the same audio to drive the amplitude-
-    // based mouth — plus a far better voice than the browser's. Web Speech
-    // remains the fallback if the TTS call fails.
+    // based mouth — plus a far better voice than the browser's.
+    //
+    // Deliberately NO Web Speech fallback here: switching to the browser's
+    // voice mid-lesson means the presenter suddenly sounds like a different
+    // person (and a live avatar's lips can't follow it at all). If TTS is
+    // still down after all server+client retries, this line is skipped
+    // gracefully — the text is on the board/captions/Q&A thread — rather
+    // than read aloud in the wrong voice.
     if (!isTavus) {
       const handled = await speakViaServerTts(text, {
         charOffset, textLen, driveBoard, nSteps, finish, myGen,
       });
-      if (handled) return;
+      if (!handled && myGen === speechGenRef.current) finish();
+      return;
     }
 
     // Amara: try the live Tavus avatar first — real voice + lip-synced video,
