@@ -493,14 +493,27 @@ function Classroom({
         ])
       : null;
 
-    let objectUrl;
+    let blob = null;
     try {
-      const blob = await fetchTtsAudio(text, 'Gacrux');
-      objectUrl = URL.createObjectURL(blob);
+      blob = await fetchTtsAudio(text, 'Gacrux');
     } catch {
-      if (showOverlay) setAvatarConnecting(false);
-      return false; // TTS unavailable this time — Web Speech API takes over
+      // One client-side retry on top of the server's own retries: falling
+      // back to Web Speech means the live avatar cannot lip-sync at all
+      // (its track only carries this element's audio), so a second attempt
+      // is well worth ~a second of extra wait.
+      await new Promise((r) => { setTimeout(r, 800); });
+      if (myGen !== speechGenRef.current) {
+        if (showOverlay) setAvatarConnecting(false);
+        return true; // stale — a newer line took over; drop silently
+      }
+      try {
+        blob = await fetchTtsAudio(text, 'Gacrux');
+      } catch {
+        if (showOverlay) setAvatarConnecting(false);
+        return false; // TTS unavailable this time — Web Speech API takes over
+      }
     }
+    const objectUrl = URL.createObjectURL(blob);
 
     // A newer speakWithMouth() call (segment change, pause, raise hand)
     // started while this fetch was in flight — this line is stale, so drop

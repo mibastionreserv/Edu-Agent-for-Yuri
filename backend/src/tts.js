@@ -61,14 +61,34 @@ export async function synthesizeSpeech(text, { voice = 'Gacrux' } = {}) {
     }),
   });
 
-  let res = await call();
-  // Gemini TTS occasionally returns text tokens instead of audio and fails with a
-  // 500 (documented, random, low-frequency) — one retry per the docs' own advice.
-  if (!res.ok && res.status >= 500) res = await call();
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    console.error(`[tts] request failed: ${res.status} model=${model} body=${body.slice(0, 300)}`);
-    throw new Error(`TTS ${res.status}`);
+  // Gemini TTS fails randomly at a low rate (documented: occasional 500s
+  // when it emits text tokens instead of audio; plus 429s under load).
+  // A failed line is expensive for us: the client falls back to the
+  // browser's Web Speech voice, which the live avatar cannot lip-sync to —
+  // the learner sees a frozen mouth. So retry up to 3 times with a short
+  // backoff on any retryable failure (5xx, 429, network error) before
+  // giving up.
+  const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
+  let res = null;
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) await sleep(attempt === 1 ? 300 : 900);
+    try {
+      res = await call();
+    } catch (e) {
+      lastErr = e; // network-level failure — retry
+      res = null;
+      continue;
+    }
+    if (res.ok) break;
+    if (res.status >= 500 || res.status === 429) continue; // retryable
+    break; // 4xx config errors won't get better by retrying
+  }
+  if (!res || !res.ok) {
+    const status = res ? res.status : `network (${lastErr && lastErr.message})`;
+    const body = res ? await res.text().catch(() => '') : '';
+    console.error(`[tts] request failed after retries: ${status} model=${model} body=${String(body).slice(0, 300)}`);
+    throw new Error(`TTS ${status}`);
   }
   const data = await res.json();
   const b64 = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
