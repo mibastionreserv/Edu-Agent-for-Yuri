@@ -183,7 +183,10 @@ export function createApp(pool) {
   // avatar if this errors or isn't configured.
   app.post('/api/simli-token', requireAuth, async (req, res) => {
     const apiKey = process.env.SIMLI_API_KEY;
-    const faceId = (req.body && req.body.faceId) || process.env.SIMLI_FACE_ID;
+    // SIMLI_FACE_ID wins over whatever the client asks for: swapping the
+    // avatar (e.g. to one created on app.simli.com) is then an env-var
+    // change on Render, with no code edit or redeploy of the frontend.
+    const faceId = process.env.SIMLI_FACE_ID || (req.body && req.body.faceId);
     if (!apiKey || !faceId) return res.status(503).json({ error: 'Live avatar is not configured.' });
     try {
       const simliRes = await fetch('https://api.simli.ai/compose/token', {
