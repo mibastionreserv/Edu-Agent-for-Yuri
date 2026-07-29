@@ -893,11 +893,16 @@ function Classroom({
                 the video here is the ONLY rendering — all animation comes
                 from the avatar service itself, never a photo or CSS mouth. */}
             <div className="presenter-dock" ref={presenterDockRef}>
-              {simliFaceId && !simliFailed ? (
+              {simliFaceId ? (
+                /* Always mounted, even after a failed/slow connect: the
+                   component shows the persona photo until real frames
+                   arrive, so a late stream can still take over and the
+                   learner never sees a black box. */
                 <SimliAvatar
                   ref={simliRef}
                   faceId={simliFaceId}
                   size={150}
+                  posterSrc={`/content/avatars/${avatarId}.jpg`}
                   onReady={(ok) => {
                     simliUpRef.current = ok;
                     if (!ok) {

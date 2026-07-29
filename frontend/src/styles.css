@@ -203,7 +203,10 @@ input{font-family:inherit}
   transform:translate(-50%,-30%) scaleY(calc(.15 + .85 * var(--mouth, 0)));
   transition:transform .05s linear}
 .simli-avatar{position:relative;overflow:hidden;border-radius:14px;background:#0c1620}
-.simli-avatar video{width:100%;height:100%;object-fit:cover;display:block}
+.simli-avatar video{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .25s ease}
+/* Persona photo shown beneath the video until live frames arrive. */
+.simli-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  object-position:center top;display:block}
 
 /* Full-screen blocking loader shown while a live avatar (Simli/Tavus) is
    connecting for the first time — SRS §avatar-readiness requires the whole

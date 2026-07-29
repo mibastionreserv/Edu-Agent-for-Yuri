@@ -28,7 +28,9 @@ import { api } from './api.js';
 // 'start' event has been observed not to fire even when frames are flowing.
 const CONNECT_TIMEOUT_MS = 20000;
 
-const SimliAvatar = forwardRef(function SimliAvatar({ faceId, size = 150, onReady }, ref) {
+const SimliAvatar = forwardRef(function SimliAvatar({
+  faceId, size = 150, onReady, posterSrc,
+}, ref) {
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const clientRef = useRef(null);
@@ -99,17 +101,25 @@ const SimliAvatar = forwardRef(function SimliAvatar({ faceId, size = 150, onRead
         // playback for us, so the voice is heard once, via Simli).
         if (audioEl) client.listenToAudioElement(audioEl);
 
-        // Belt and braces: go live on the first real frame even if 'start'
-        // never fires, and give up cleanly if nothing arrives at all — the
-        // parent then falls back rather than showing a black rectangle.
+        // Go live on the first real frame even if 'start' never fires. The
+        // poll keeps running past the timeout: reporting "not ready" only
+        // unblocks the lesson (the poster is shown meanwhile) — it must not
+        // stop a stream that is merely slow from appearing when it lands.
         const vid = videoRef.current;
         const poll = setInterval(() => {
-          if (vid && vid.videoWidth > 0 && vid.readyState >= 2) settle(true);
+          if (vid && vid.videoWidth > 0 && vid.readyState >= 2) {
+            settledRef.current = false; // allow the late success to register
+            settle(true);
+          }
         }, 250);
-        const giveUp = setTimeout(
-          () => settle(false, 'No video from the avatar service — the network may be blocking it.'),
-          CONNECT_TIMEOUT_MS,
-        );
+        const giveUp = setTimeout(() => {
+          if (!settledRef.current) {
+            // Report failure so narration proceeds without waiting, but keep
+            // the connection and the poll alive.
+            settledRef.current = true;
+            if (onReadyRef.current) onReadyRef.current(false);
+          }
+        }, CONNECT_TIMEOUT_MS);
         timersRef.current.push(poll, giveUp);
       } catch (e) {
         settle(false, (e && e.message) || 'Could not start the live avatar.');
@@ -123,9 +133,23 @@ const SimliAvatar = forwardRef(function SimliAvatar({ faceId, size = 150, onRead
     },
   }));
 
+  // The poster (persona photo) sits UNDER the video and is simply covered
+  // once real frames arrive. This is why the component never unmounts on
+  // failure: tearing it down would destroy a connection that may still be
+  // completing, and a late-arriving stream would have nowhere to appear.
+  // The learner sees the presenter either way — never a black rectangle.
   return (
     <div className="simli-avatar" style={{ width: size, height: size * 1.15 }}>
-      <video ref={videoRef} autoPlay playsInline muted={false} />
+      {posterSrc && status !== 'live' && (
+        <img className="simli-poster" src={posterSrc} alt="" aria-hidden="true" />
+      )}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={false}
+        style={{ opacity: status === 'live' ? 1 : 0 }}
+      />
       <audio ref={audioRef} autoPlay />
       {status === 'connecting' && (
         <div className="simli-overlay"><span className="simli-hint">Connecting…</span></div>
