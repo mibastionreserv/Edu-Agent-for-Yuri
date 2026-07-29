@@ -817,21 +817,42 @@ function Classroom({
   function resume() {
     stopVoiceMode();
     setHandUp(false);
-    const bridge = ui.resumeAfterQuestion;
-    if (!bridge) { resumeNarration(); return; }
 
-    // Continue the lesson once the bridge phrase finishes — but never let
-    // the lesson depend on that callback alone. The Web Speech API drops
-    // 'end' events often enough (backgrounded tab, interrupted utterance,
-    // some network voices) that relying on it left narration silently
-    // stopped after the hand went down. The guard makes resuming
-    // idempotent, and the timer guarantees it happens either way.
+    // Snapshot WHERE to continue right now, before anything else speaks.
+    // Reading these refs after the bridge phrase finished was the bug: by
+    // then the interstitial speech had moved the shared position state on,
+    // so resuming silently found nothing left to say and the lesson just
+    // stopped after promising to continue.
+    const full = fullTextRef.current;
+    const from = lastCharRef.current;
+
+    // Whatever is still speaking (the raise-hand prompt, an answer) must be
+    // cut off first — otherwise the bridge queues behind it and the learner
+    // sits through several seconds of silence before anything happens.
+    if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
+    cancelSpeech();
+
     let resumed = false;
     const continueLesson = () => {
       if (resumed) return;
       resumed = true;
-      resumeNarration();
+      setPaused(false);
+      if (!full || from >= full.length) {
+        // Nothing left in this segment — move on rather than going quiet.
+        if (seg < mod.segments.length - 1) goSegment(seg + 1);
+        return;
+      }
+      speakWithMouth(full.slice(from), {
+        driveBoard: true, charOffset: from, fullLen: full.length,
+      });
     };
+
+    const bridge = ui.resumeAfterQuestion;
+    if (!bridge) { continueLesson(); return; }
+    // Continue when the bridge ends, and guarantee it with a timer too:
+    // Web Speech drops 'end' often enough (backgrounded tab, interrupted
+    // utterance, some network voices) that the callback alone is not
+    // dependable. continueLesson is idempotent, so both paths are safe.
     speakWithMouth(bridge, { driveBoard: false, onEnd: continueLesson });
     setTimeout(continueLesson, 12000);
   }
