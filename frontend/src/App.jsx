@@ -457,7 +457,11 @@ function Classroom({
     if (driveBoard) {
       progressTimerRef.current = setInterval(() => {
         const estAbs = charOffset + (Date.now() - startedAt) * CHARS_PER_MS;
-        lastCharRef.current = Math.max(lastCharRef.current, Math.min(estAbs, textLen));
+        // Cap below the very end: this is a time-based ESTIMATE, and if it
+        // overshoots while speech is still running, an interrupted segment
+        // looks 'already finished' and cannot be resumed from its real spot.
+        // Only a natural finish() marks the text as fully spoken.
+        lastCharRef.current = Math.max(lastCharRef.current, Math.min(estAbs, textLen * 0.97));
         setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
       }, 200);
     }
@@ -762,7 +766,11 @@ function Classroom({
     if (driveBoard) {
       progressTimerRef.current = setInterval(() => {
         const estAbs = charOffset + (Date.now() - startedAt) * CHARS_PER_MS;
-        lastCharRef.current = Math.max(lastCharRef.current, Math.min(estAbs, textLen));
+        // Cap below the very end: this is a time-based ESTIMATE, and if it
+        // overshoots while speech is still running, an interrupted segment
+        // looks 'already finished' and cannot be resumed from its real spot.
+        // Only a natural finish() marks the text as fully spoken.
+        lastCharRef.current = Math.max(lastCharRef.current, Math.min(estAbs, textLen * 0.97));
         setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
       }, 200);
     }
@@ -837,11 +845,12 @@ function Classroom({
       if (resumed) return;
       resumed = true;
       setPaused(false);
-      if (!full || from >= full.length) {
-        // Nothing left in this segment — move on rather than going quiet.
-        if (seg < mod.segments.length - 1) goSegment(seg + 1);
-        return;
-      }
+      // The remembered position is only an ESTIMATE while the browser voice
+      // is used (Web Speech reports no reliable progress), so it can run
+      // past the real end of the text. In that case replay this segment
+      // from the top: never jump to another segment (that skips content and
+      // only clears the board) and never fall silent.
+      if (!full || from >= full.length) { play(); return; }
       speakWithMouth(full.slice(from), {
         driveBoard: true, charOffset: from, fullLen: full.length,
       });
