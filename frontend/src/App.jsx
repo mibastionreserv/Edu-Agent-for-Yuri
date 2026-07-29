@@ -306,6 +306,11 @@ function Classroom({
   // envelope decoded from the narration audio, written to a CSS variable on
   // the presenter dock (no React re-renders at 60fps).
   const presenterDockRef = useRef(null);
+  // AudioContext used ONLY to decode narration audio into that envelope —
+  // playback itself never goes through it, so a suspended context can't
+  // silence the lesson. (It is still resumed on the Play gesture because
+  // decodeAudioData is cheaper on a running context.)
+  const narrationCtxRef = useRef(null);
   // True once the first TTS line for a photo persona has been fetched —
   // the full-screen loader is shown only for that first load, mirroring how
   // live avatars show it only for their first connect.
@@ -745,12 +750,16 @@ function Classroom({
     speakWithMouth(full, { driveBoard: true });
   }
   function togglePlay() {
-    // Synchronously inside the click: browsers only allow AudioContext to
-    // (re)start from a user gesture, and the narration audio for Simli
-    // personas flows through one (see ensureLiveAvatarFromElement).
-    if (narrationCtxRef.current && narrationCtxRef.current.state === 'suspended') {
-      narrationCtxRef.current.resume().catch(() => {});
-    }
+    // Resuming the decode context needs a user gesture, so it happens
+    // synchronously here. Wrapped defensively: a throw anywhere in this
+    // handler would silently kill the Play button for the whole lesson,
+    // which is exactly how a missing-reference regression once made Play
+    // look "broken" with no visible error.
+    try {
+      if (narrationCtxRef.current && narrationCtxRef.current.state === 'suspended') {
+        narrationCtxRef.current.resume().catch(() => {});
+      }
+    } catch { /* decode context is optional — never block playback on it */ }
     if (speaking) { pauseNarration(); return; }
     if (paused) { resumeNarration(); return; }
     play();
