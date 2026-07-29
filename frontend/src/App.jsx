@@ -55,6 +55,22 @@ const SIMLI_FACES = {
 // stock replica (r92debe21318) that actually renders the live video.
 const TAVUS_PERSONAS = { yuri: true, amara: true };
 
+// The server-TTS voice each persona speaks with. One voice per presenter,
+// used for EVERY line she says — lesson narration, the resume phrase, Q&A
+// answers — so a persona always sounds like herself. The cache is keyed on
+// (text + voice + model), so each persona's audio is stored separately and
+// switching presenter never serves another one's recording.
+//
+// Mira keeps Gacrux: it was the single hardcoded voice until now, so her
+// existing cache entries stay valid instead of being re-synthesized.
+// (Tavus personas are absent on purpose — Tavus does its own TTS.)
+const PERSONA_TTS_VOICE = {
+  mira: 'Gacrux', // warm, measured — the default coach
+  daniel: 'Charon', // lower, informative male
+  meilin: 'Leda', // brighter, energetic female
+};
+const DEFAULT_TTS_VOICE = 'Gacrux';
+
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
   // replaces the drawn SVG automatically, no code change needed per persona.
@@ -165,6 +181,10 @@ function Classroom({
   // Live Simli video avatar: always mounted for these personas — the
   // classroom presenter is exclusively the service-rendered video (SRS
   // FR-AV-5), connected via pre-warm the moment the classroom opens.
+  // This presenter's server-TTS voice — the single voice used for every
+  // line she speaks, and part of the cache key so it is stored per persona.
+  const ttsVoice = PERSONA_TTS_VOICE[avatarId] || DEFAULT_TTS_VOICE;
+
   const simliFaceId = SIMLI_FACES[avatarId];
   const simliRef = useRef(null);
   const simliAttemptedRef = useRef(false);
@@ -374,7 +394,7 @@ function Classroom({
     if (loading || !mod || isTavus) return;
     const probe = ui.resumeAfterQuestion || 'Let us continue.';
     let alive = true;
-    fetchTtsAudio(probe, 'Gacrux')
+    fetchTtsAudio(probe, ttsVoice)
       .catch(() => { if (alive) ttsDownRef.current = true; });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -494,7 +514,7 @@ function Classroom({
 
     let blob = null;
     try {
-      blob = await fetchTtsAudio(text, 'Gacrux');
+      blob = await fetchTtsAudio(text, ttsVoice);
     } catch (firstErr) {
       // Quota rejection (429): retrying is actively harmful — it burns more
       // of the quota we just ran out of. Give up immediately so the session
@@ -515,7 +535,7 @@ function Classroom({
         return true; // stale — a newer line took over; drop silently
       }
       try {
-        blob = await fetchTtsAudio(text, 'Gacrux');
+        blob = await fetchTtsAudio(text, ttsVoice);
       } catch {
         photoTtsWarmedRef.current = true; // don't re-show the loader per line
         if (showOverlay) setAvatarConnecting(false);
