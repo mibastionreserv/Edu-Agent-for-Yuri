@@ -362,6 +362,24 @@ function Classroom({
   // (and narrationAudioRef) do not exist yet — a mount-time pre-warm found
   // null refs, silently did nothing, and the avatar never connected (the
   // production "Connecting… forever, no conversation ever created" bug).
+  // Decide the voice for the WHOLE lesson up front, before a single line is
+  // spoken. Lesson paragraphs are usually cache hits (no quota cost) while
+  // the interstitial phrases and Q&A answers are fresh text — so without
+  // this probe the presenter would start in the server voice and switch to
+  // the browser voice the moment it hit an uncached line, which is exactly
+  // the mid-lesson voice change that kept being reported. Probing the
+  // resume phrase is free when it is cached and, when it is not, both warms
+  // the cache and reveals an unavailable TTS before anything is spoken.
+  useEffect(() => {
+    if (loading || !mod || isTavus) return;
+    const probe = ui.resumeAfterQuestion || 'Let us continue.';
+    let alive = true;
+    fetchTtsAudio(probe, 'Gacrux')
+      .catch(() => { if (alive) ttsDownRef.current = true; });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   useEffect(() => {
     if (loading || !mod) return;
     if (simliFaceId) {
@@ -780,11 +798,22 @@ function Classroom({
     stopVoiceMode();
     setHandUp(false);
     const bridge = ui.resumeAfterQuestion;
-    if (bridge) {
-      speakWithMouth(bridge, { driveBoard: false, onEnd: resumeNarration });
-    } else {
+    if (!bridge) { resumeNarration(); return; }
+
+    // Continue the lesson once the bridge phrase finishes — but never let
+    // the lesson depend on that callback alone. The Web Speech API drops
+    // 'end' events often enough (backgrounded tab, interrupted utterance,
+    // some network voices) that relying on it left narration silently
+    // stopped after the hand went down. The guard makes resuming
+    // idempotent, and the timer guarantees it happens either way.
+    let resumed = false;
+    const continueLesson = () => {
+      if (resumed) return;
+      resumed = true;
       resumeNarration();
-    }
+    };
+    speakWithMouth(bridge, { driveBoard: false, onEnd: continueLesson });
+    setTimeout(continueLesson, 12000);
   }
 
   async function submitQuestion(text, viaVoice = false) {
