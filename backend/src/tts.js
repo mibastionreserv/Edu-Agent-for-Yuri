@@ -109,6 +109,11 @@ export async function synthesizeSpeech(text, { voice = 'Gacrux', pool = null } =
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
+  // Without a timeout a hung upstream call left every caller (the TTS
+  // request, and transitively the classroom UI waiting on it) stuck forever
+  // — see SS-6. AbortSignal.timeout() rejects with a DOMException named
+  // 'TimeoutError', which the retry loop below already treats as a
+  // network-level failure (retryable, same as any other fetch rejection).
   const call = () => fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -119,6 +124,7 @@ export async function synthesizeSpeech(text, { voice = 'Gacrux', pool = null } =
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
       },
     }),
+    signal: AbortSignal.timeout(15000),
   });
 
   // Gemini TTS fails randomly at a low rate (documented: occasional 500s

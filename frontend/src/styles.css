@@ -127,7 +127,7 @@ input{font-family:inherit}
 .raise.lit{background:var(--coral);color:#fff;box-shadow:0 0 0 5px rgba(255,106,85,.25)}
 
 /* resizable split: presenter pane (left) + Q&A strip (right) */
-.split{display:flex;align-items:stretch;flex:1;min-height:0;overflow:hidden}
+.split{position:relative;display:flex;align-items:stretch;flex:1;min-height:0;overflow:hidden}
 .left-pane{flex:1 1 auto;min-width:0;min-height:0;display:flex;flex-direction:column}
 .left-pane .stage{flex:1;border-bottom:0;min-height:0;overflow:hidden}
 .divider{flex:0 0 8px;cursor:col-resize;background:transparent;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--line)}
@@ -208,11 +208,13 @@ input{font-family:inherit}
 .simli-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
   object-position:center top;display:block}
 
-/* Full-screen blocking loader shown while a live avatar (Simli/Tavus) is
-   connecting for the first time — SRS §avatar-readiness requires the whole
-   UI to stay locked out until the avatar is truly ready, so the learner
-   never sees a static/half-animated presenter mid-connect. */
-.avatar-loading-overlay{position:fixed;inset:0;z-index:80;display:flex;align-items:center;
+/* Blocking loader shown while a live avatar (Simli/Tavus) is connecting for
+   the first time — SRS §avatar-readiness requires the lesson UI to stay
+   locked out until the avatar is truly ready, so the learner never sees a
+   static/half-animated presenter mid-connect. Scoped to .split (the lesson
+   area), not the whole viewport, so the topbar ("← Modules") and the appbar
+   (language switcher) above it stay clickable while this is up (SS-5). */
+.avatar-loading-overlay{position:absolute;inset:0;z-index:80;display:flex;align-items:center;
   justify-content:center;background:rgba(11,17,22,.92);backdrop-filter:blur(2px)}
 .avatar-loading-overlay .state{padding:0;font-size:15px;color:#fff}
 .simli-overlay{position:absolute;inset:0;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;

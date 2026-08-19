@@ -42,6 +42,9 @@ describe('API flow: course -> auth -> progress -> ask', () => {
     expect(res.body.segments.length).toBeGreaterThan(0);
     expect(res.body.check).toBeTruthy();
     expect(res.body.check.items.length).toBeGreaterThan(0);
+    // SS-3: loadModule() used to drop `order`, so the classroom progress
+    // chip showed "undefined · N/M" instead of "Module 1 · N/M".
+    expect(res.body.order).toBe(1);
   });
 
   it('rejects weak passwords on registration', async () => {

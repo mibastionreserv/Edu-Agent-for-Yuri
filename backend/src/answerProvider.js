@@ -54,6 +54,10 @@ export async function getAnswer({ question, lang, module, history = [], avatarId
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify({ model, messages: msgs, temperature: 0.3, max_tokens: 300 }),
+      // A hung LLM call used to leave the learner's question stuck on
+      // "Thinking…" forever — fail fast and fall back to the local
+      // grounded composer instead (see the catch block below), SS-6.
+      signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '');
