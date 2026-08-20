@@ -27,7 +27,25 @@ function loadVoices() {
 const GOOD = [/natural/i, /neural/i, /wavenet/i, /studio/i, /premium/i, /enhanced/i, /siri/i, /google/i];
 const BAD = [/compact/i, /espeak/i, /robot/i];
 
-function rank(voice, prefix) {
+// Minimal, not exhaustive: common voice names shipped by Windows/macOS/
+// Chrome speechSynthesis. Good enough to stop two personas of different
+// genders from both falling back to the same system voice (SS-12) — not
+// meant to be a complete gender classifier for every locale.
+const MALE_NAME = /\b(david|guy|mark|daniel|thomas|male|george|james|alex)\b/i;
+const FEMALE_NAME = /\b(zira|susan|female|samantha|victoria|karen|hazel|catherine|eva|anna)\b/i;
+
+function genderScore(name, gender) {
+  if (!gender) return 0;
+  const isMale = MALE_NAME.test(name);
+  const isFemale = FEMALE_NAME.test(name);
+  if (gender === 'male' && isMale) return 4;
+  if (gender === 'female' && isFemale) return 4;
+  if (gender === 'male' && isFemale) return -4;
+  if (gender === 'female' && isMale) return -4;
+  return 0;
+}
+
+function rank(voice, prefix, gender) {
   let s = 0;
   const name = `${voice.name} ${voice.voiceURI || ''}`;
   const vlang = (voice.lang || '').toLowerCase().replace('_', '-');
@@ -36,31 +54,32 @@ function rank(voice, prefix) {
   if (GOOD.some((re) => re.test(name))) s += 5;
   if (BAD.some((re) => re.test(name))) s -= 6;
   if (voice.localService === false) s += 1;
+  s += genderScore(name, gender);
   return s;
 }
 
-export async function pickVoice(lang) {
+export async function pickVoice(lang, gender) {
   const voices = await loadVoices();
   if (!voices.length) return null;
   const prefix = langTag(lang).toLowerCase();
-  const scored = voices.map((v) => ({ v, s: rank(v, prefix) })).sort((a, b) => b.s - a.s);
+  const scored = voices.map((v) => ({ v, s: rank(v, prefix, gender) })).sort((a, b) => b.s - a.s);
   // Only return a voice that at least shares the language family, else null so
   // the browser default (which may not match) is not misused.
   return scored[0].s >= 6 ? scored[0].v : null;
 }
 
-export async function pickVoiceName(lang) {
-  const v = await pickVoice(lang);
+export async function pickVoiceName(lang, gender) {
+  const v = await pickVoice(lang, gender);
   return v ? v.name : null;
 }
 
 // Speak text with natural pacing. onBoundary(charIndex) fires as words are
 // spoken so the caller can drive synchronized whiteboard cues. Returns cancel().
 export async function speak(text, lang, {
-  onStart, onEnd, onError, onBoundary,
+  onStart, onEnd, onError, onBoundary, gender,
 } = {}) {
   if (!speechSupported() || !text) { if (onEnd) onEnd(); return () => {}; }
-  const voice = await pickVoice(lang);
+  const voice = await pickVoice(lang, gender);
   const u = new SpeechSynthesisUtterance(text);
   u.lang = langTag(lang);
   if (voice) u.voice = voice;

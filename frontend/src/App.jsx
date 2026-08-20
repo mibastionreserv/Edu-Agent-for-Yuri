@@ -71,6 +71,23 @@ const PERSONA_TTS_VOICE = {
 };
 const DEFAULT_TTS_VOICE = 'Gacrux';
 
+// Gender of each persona's voice — used to steer the browser Web Speech
+// fallback (speech.js pickVoice) toward a voice that at least matches, so a
+// fallback for Daniel and one for Mei-Lin don't both collapse onto the same
+// system voice (SS-12).
+const PERSONA_GENDER = { mira: 'female', daniel: 'male', meilin: 'female' };
+
+// Session-wide unrecoverable TTS failures: quota exhaustion and auth/config
+// problems, matched against the "TTS <status>" / "TTS is not configured."
+// detail the backend surfaces (backend/src/tts.js, backend/src/app.js).
+// Everything else (5xx, "no audio", a timeout, a network blip) is a
+// transient, per-line flake and must NOT latch the whole session onto the
+// fallback voice (SS-12).
+function isPermanentTtsFailure(err) {
+  const msg = String((err && err.message) || '');
+  return /\b(429|401|403)\b/.test(msg) || /not configured/i.test(msg);
+}
+
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
   // replaces the drawn SVG automatically, no code change needed per persona.
@@ -188,6 +205,7 @@ function Classroom({
   // This presenter's server-TTS voice — the single voice used for every
   // line she speaks, and part of the cache key so it is stored per persona.
   const ttsVoice = PERSONA_TTS_VOICE[avatarId] || DEFAULT_TTS_VOICE;
+  const personaGender = PERSONA_GENDER[avatarId] || 'female';
 
   const simliFaceId = SIMLI_FACES[avatarId];
   const simliRef = useRef(null);
@@ -250,7 +268,18 @@ function Classroom({
     api.module(moduleId, lang)
       .then((m) => { if (alive) { setMod(m); setLoading(false); } })
       .catch((e) => { if (alive) { setError(e.message || ui.errorGeneric); setLoading(false); } });
-    return () => { alive = false; stopAll(); };
+    return () => {
+      alive = false; stopAll();
+      // The presenter-dock subtree (SimliAvatar + narration <audio>) is torn
+      // down and rebuilt for the new lang/module, but Classroom itself is
+      // not remounted — these latches belong to the OLD SimliAvatar
+      // instance and must not be inherited by the new one, or
+      // ensureLiveAvatarFromElement() hands back an already-resolved
+      // promise for a connection that no longer exists (SS-10).
+      simliConnectReadyRef.current = null;
+      simliAttemptedRef.current = false;
+      simliUpRef.current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId, lang]);
 
@@ -258,7 +287,7 @@ function Classroom({
 
   useEffect(() => {
     let alive = true;
-    if (speechSupported()) pickVoiceName(lang).then((n) => { if (alive) setVoiceName(n || ''); });
+    if (speechSupported()) pickVoiceName(lang, personaGender).then((n) => { if (alive) setVoiceName(n || ''); });
     return () => { alive = false; };
   }, [lang]);
 
@@ -405,7 +434,7 @@ function Classroom({
     const probe = ui.resumeAfterQuestion || 'Let us continue.';
     let alive = true;
     fetchTtsAudio(probe, ttsVoice)
-      .catch(() => { if (alive) markTtsDown(); });
+      .catch((e) => { if (alive && isPermanentTtsFailure(e)) markTtsDown(); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
@@ -531,10 +560,15 @@ function Classroom({
     try {
       blob = await fetchTtsAudio(text, ttsVoice);
     } catch (firstErr) {
-      // Quota rejection (429): retrying is actively harmful — it burns more
-      // of the quota we just ran out of. Give up immediately so the session
-      // latches onto the fallback voice.
-      if (String((firstErr && firstErr.message) || '').includes('429')) {
+      // Unrecoverable for the rest of the session (quota/auth/config):
+      // retrying only this line — or any later one — is pointless, and for
+      // 429 specifically it's actively harmful, burning more of the quota
+      // we just ran out of. Latch so the WHOLE session stops hitting the
+      // server. Everything else (5xx, no-audio, timeout, network blip) is a
+      // one-off flake — fall back to the browser voice for THIS line only,
+      // the next line still tries server TTS (SS-12).
+      if (isPermanentTtsFailure(firstErr)) {
+        markTtsDown();
         photoTtsWarmedRef.current = true;
         if (showOverlay) setAvatarConnecting(false);
         if (presenterDockRef.current) presenterDockRef.current.removeAttribute('data-lipsync');
@@ -551,7 +585,8 @@ function Classroom({
       }
       try {
         blob = await fetchTtsAudio(text, ttsVoice);
-      } catch {
+      } catch (secondErr) {
+        if (isPermanentTtsFailure(secondErr)) markTtsDown();
         photoTtsWarmedRef.current = true; // don't re-show the loader per line
         if (showOverlay) setAvatarConnecting(false);
         // Web Speech takes over — let the blink fallback animate the mouth,
@@ -753,16 +788,17 @@ function Classroom({
     // based mouth — plus a far better voice than the browser's.
     //
     // Server TTS is preferred (better voice, and it's the only audio a live
-    // avatar can lip-sync to). If it fails, ttsDownRef latches for the rest
-    // of the session so every later line uses the browser voice too — the
-    // presenter then sounds the same from start to finish instead of
-    // flipping between two voices line by line.
+    // avatar can lip-sync to). speakViaServerTts() itself decides whether a
+    // failure is session-wide unrecoverable (quota/auth/config — it latches
+    // ttsDownRef there) or just this one line flaking (5xx, no-audio,
+    // timeout) — in the latter case ttsDownRef stays false and the very
+    // next line tries the server again instead of the whole rest of the
+    // lesson being stuck on the browser voice (SS-12).
     if (!isTavus && !ttsDownRef.current) {
       const handled = await speakViaServerTts(text, {
         charOffset, textLen, driveBoard, nSteps, finish, myGen,
       });
       if (handled) return;
-      markTtsDown();
       if (myGen !== speechGenRef.current) return; // superseded while we tried
     }
 
@@ -808,6 +844,7 @@ function Classroom({
         setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
       } : undefined,
       onEnd: finish,
+      gender: personaGender,
     });
     if (!speechSupported()) finish();
   }
@@ -1147,7 +1184,14 @@ function Classroom({
                 actually latched off for the session (SS-4). */}
             {!isTavus && (
               <div className="voicename">
-                🗣 {ui.voice}: {ttsDown ? (voiceName || ttsVoice) : ttsVoice}
+                {/* voiceName resolves asynchronously (speechSynthesis voice
+                    list can take up to ~700ms via 'voiceschanged' — see
+                    speech.js loadVoices()). Showing ttsVoice (the SERVER
+                    persona voice) next to "(fallback)" while it is still
+                    pending would misleadingly claim the server voice is
+                    what's about to be heard — show a placeholder instead
+                    until the real fallback voice name is known (SS-16). */}
+                🗣 {ui.voice}: {ttsDown ? (voiceName || '…') : ttsVoice}
                 {ttsDown && ' (fallback)'}
               </div>
             )}
@@ -1209,7 +1253,14 @@ function CourseApp({ user, onLogout }) {
   // own setState (setAvatarId/setLang/setInitialSegment) has not necessarily
   // committed yet when this reads the surrounding state (SS-7: presenter and
   // language choices are saved immediately, not only on segment navigation).
-  async function saveProgress({ segment, avatar, language } = {}) {
+  // silent: skip the toast entirely. Needed for the language-change call
+  // site below — `ui` here is a closure over the OLD language's strings,
+  // and the new ones only arrive later via loadAll(), so an immediate
+  // showToast(ui.saved) would flash the previous language's "Saved" text
+  // (SS-14). Saving itself is unaffected either way.
+  async function saveProgress({
+    segment, avatar, language, silent,
+  } = {}) {
     try {
       await api.saveProgress({
         courseId: COURSE_ID,
@@ -1218,8 +1269,8 @@ function CourseApp({ user, onLogout }) {
         lang: language ?? lang,
         avatarId: avatar ?? avatarId,
       });
-      showToast(ui.saved);
-    } catch { showToast(ui.errorGeneric); }
+      if (!silent) showToast(ui.saved);
+    } catch { if (!silent) showToast(ui.errorGeneric); }
   }
 
   if (loading || !ui) return <div className="shell"><Spinner label="Loading…" /></div>;
@@ -1232,7 +1283,7 @@ function CourseApp({ user, onLogout }) {
           <div className="lang">
             {(course.supportedLanguages || ['en']).map((l) => (
               <button key={l} className={lang === l ? 'sel' : ''}
-                onClick={() => { setLang(l); saveProgress({ language: l }); }}>{l.toUpperCase()}</button>
+                onClick={() => { setLang(l); saveProgress({ language: l, silent: true }); }}>{l.toUpperCase()}</button>
             ))}
           </div>
           <span className="who">{(user && user.displayName) || ''}</span>

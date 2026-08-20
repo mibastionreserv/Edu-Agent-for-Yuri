@@ -68,7 +68,17 @@ export async function getAnswer({ question, lang, module, history = [], avatarId
     const data = await res.json();
     const text = data.choices?.[0]?.message?.content?.trim();
     if (!text) throw new Error('empty LLM answer');
-    return { topicality: 'on', answer: text, source: local.source, sources: local.sources, intent: local.intent, provider: 'llm' };
+    // No source/sources here on purpose: the LLM answers from the FULL
+    // module context while local.source/sources come from an independent
+    // keyword retriever over the same text — the two routinely disagree on
+    // which chunk was actually used, showing a citation that doesn't match
+    // the answer. Omitting it is safer than a citation that misleads.
+    // topicality is borrowed from the local classifier (not hardcoded 'on')
+    // so the frontend's m.topicality filter/styling reflects reality instead
+    // of treating every LLM answer, including off-topic ones, as on-topic.
+    return {
+      topicality: local.topicality, answer: text, intent: local.intent, provider: 'llm',
+    };
   } catch (err) {
     console.error(`[llm] falling back to local: ${err && err.message}`);
     return { ...local, provider: 'local' };

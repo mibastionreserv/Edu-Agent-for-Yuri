@@ -36,6 +36,7 @@ const SimliAvatar = forwardRef(function SimliAvatar({
   const clientRef = useRef(null);
   const settledRef = useRef(false); // onReady must fire exactly once per start()
   const timersRef = useRef([]);
+  const unmountedRef = useRef(false);
   const [status, setStatus] = useState('idle'); // idle | connecting | live | error
   const [error, setError] = useState('');
 
@@ -60,15 +61,35 @@ const SimliAvatar = forwardRef(function SimliAvatar({
     if (onReadyRef.current) onReadyRef.current(ok);
   }
 
+  // Undoes listenToAudioElement()'s Web Audio graph: the SDK's own stop()
+  // only tears down the transport, so a torn-down-but-not-disconnected
+  // AudioWorkletNode keeps posting buffers into a closed WS forever.
+  async function disconnectAudioGraph(client) {
+    try {
+      if (client.audioWorklet) {
+        client.audioWorklet.port.onmessage = null;
+        client.audioWorklet.disconnect();
+      }
+    } catch { /* already gone */ }
+    try { client.sourceNode?.disconnect(); } catch { /* already gone */ }
+    try { await client.audioContext?.close(); } catch { /* already gone */ }
+  }
+
   function teardown() {
     clearTimers();
     if (clientRef.current) {
-      try { clientRef.current.stop(); } catch { /* already gone */ }
+      const client = clientRef.current;
       clientRef.current = null;
+      disconnectAudioGraph(client).finally(() => {
+        try { client.stop(); } catch { /* already gone */ }
+      });
     }
   }
 
-  useEffect(() => teardown, []);
+  useEffect(() => () => {
+    unmountedRef.current = true;
+    teardown();
+  }, []);
 
   useImperativeHandle(ref, () => ({
     // audioEl: the <audio> element playing our narration. Simli reads its
@@ -76,10 +97,17 @@ const SimliAvatar = forwardRef(function SimliAvatar({
     async start(audioEl) {
       if (clientRef.current) return;
       settledRef.current = false;
+      unmountedRef.current = false;
       setStatus('connecting');
       setError('');
       try {
         const { session_token: sessionToken } = await api.simliToken(faceId);
+
+        // The component may have unmounted while the token request was in
+        // flight. SimliClient only opens a connection inside start(), so as
+        // long as we bail before constructing it, nothing needs tearing
+        // down — this is what stops an orphaned live session from forming.
+        if (unmountedRef.current) return;
 
         const client = new SimliClient(
           sessionToken,
