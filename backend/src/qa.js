@@ -195,13 +195,16 @@ function detectIntent(q) {
 
 // Separators for the "<subject1> <separator> <subject2>" comparison form
 // (as opposed to "between X and Y", handled separately below) — English
-// "differ(s) from" / "different from" / "compared to" plus the localized
+// "differ(s) from" / "different from" / "compared to" / "compare(s) to"
+// (present tense — SS-26) / "compare(s) with" plus the localized
 // equivalents. tokenize() already drops leading question words ("how does"),
 // so subject1 doesn't need to be trimmed of them here.
 const COMPARE_SEPARATORS = [
   /\bdiffers?\s+from\b/i,
   /\bdifferent\s+from\b/i,
   /\bcompared\s+to\b/i,
+  /\bcompares?\s+to\b/i,
+  /\bcompares?\s+with\b/i,
   /\bim\s+vergleich\s+zu\b/i,
   /\bunterscheidet\s+sich\s+von\b/i,
   /\brispetto\s+a\b/i,
@@ -271,8 +274,8 @@ export function answerQuestion({ question, lang = 'en', chunks = [], history = [
   // Chunk-first: pick the best-matching chunk for the whole module (not a
   // course-wide keyword dictionary), then rank sentences only within it -
   // this is what actually fixes source picking the wrong heading on ties.
-  // Computed up front (not just for the "define" path below) so the compare
-  // branch can also fall back to it when subject extraction fails (SS-21).
+  // Also used below to decide topicality when the compare branch declines
+  // to answer (subject extraction failed) and the define path takes over.
   const chunkRanking = rankChunks(retrievalTokens, chunks, idf);
   const bestChunk = chunkRanking[0];
   const runnerUp = chunkRanking.find((e) => e.chunk !== bestChunk?.chunk);
@@ -280,14 +283,12 @@ export function answerQuestion({ question, lang = 'en', chunks = [], history = [
 
   // Comparison: pull the best sentence for each named subject.
   if (intent === 'compare' && inScope) {
-    let subjects = extractSubjects(question);
-    // The question named two concepts in a form extractSubjects doesn't
-    // parse — rather than silently answering about only one concept (the
-    // old single-concept fallback below), compare the two strongest DISTINCT
-    // chunks from the module-wide ranking instead.
-    if (subjects.length !== 2 && onTopic && runnerUp && runnerUp.score >= CHUNK_RELEVANCE_THRESHOLD) {
-      subjects = [bestChunk.chunk.title, runnerUp.chunk.title];
-    }
+    const subjects = extractSubjects(question);
+    // If extractSubjects() can't parse the question's form, do NOT invent
+    // subjects from the module's own top chunks: bestChunkForSubject() would
+    // just re-confirm whatever we seeded it with, so the "comparison" always
+    // looks confident even when the learner never named these concepts
+    // (SS-26). Falling through to the off-topic/define path below instead.
     if (subjects.length === 2) {
       const parts = [];
       const sources = [];

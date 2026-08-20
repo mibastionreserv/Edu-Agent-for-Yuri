@@ -167,8 +167,8 @@ export function createApp(pool) {
 
     try {
       await pool.query(
-        'INSERT INTO questions (user_id, module_id, lang, question, answer, topicality) VALUES ($1,$2,$3,$4,$5,$6)',
-        [req.user.id, moduleId, mod.language, question.trim(), result.answer, result.topicality],
+        'INSERT INTO questions (user_id, module_id, lang, question, answer, topicality, provider, confidence, certainty) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        [req.user.id, moduleId, mod.language, question.trim(), result.answer, result.topicality, result.provider || null, result.confidence ?? null, result.certainty || null],
       );
     } catch {
       // Logging failure should not break the learner's flow.

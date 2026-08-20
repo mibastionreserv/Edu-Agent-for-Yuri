@@ -238,6 +238,79 @@ describe('compare-intent questions respect the topicality gate (SS-21)', () => {
   });
 });
 
+// SS-26: when a compare question's form can't be parsed by extractSubjects(),
+// the code used to fall back to `subjects = [bestChunk.title, runnerUp.title]`
+// — the module's own two top-ranked chunks for the WHOLE question, fed back
+// into bestChunkForSubject() as if the learner had named them. Because a
+// chunk title trivially matches itself, this "confirmed" the fabricated pair
+// with a deceptively confident score. Found live: "How does the Product
+// Backlog compare to the Sprint Backlog?" asked in the Events module (which
+// covers neither artifact) returned topicality:'on', confidence:0.51,
+// certainty:'high' about Sprint Planning/Sprint Review instead of an honest
+// off-topic or low-confidence answer.
+describe('compare branch never invents subjects from module-wide top chunks (SS-26)', () => {
+  it('no longer fabricates two sources for the exact reported case (present-tense "compare to", Events module)', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'How does the Product Backlog compare to the Sprint Backlog?',
+      lang: 'en',
+      chunks,
+    });
+    // The old bug's exact signature: two DIFFERENT, tautologically-confirmed
+    // headings and a deceptively confident, unhedged score.
+    expect(res.sources).not.toEqual(['Sprint Planning', 'Sprint Review']);
+    expect(res.confidence).not.toBe(0.51);
+    if (res.topicality === 'on') {
+      // The module only has incidental overlap (Sprint Planning mentions the
+      // Sprint Backlog as one of its outputs) — an honest answer must hedge.
+      expect(res.certainty).toBe('low');
+      expect(res.sources.length).toBe(1);
+    }
+  });
+
+  it('recognizes present-tense "compare(s) to" as a parseable comparison form and resolves two distinct, real sources', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'How does the Sprint Review compare to the Sprint Retrospective?',
+      lang: 'en',
+      chunks,
+    });
+    expect(res.topicality).toBe('on');
+    expect(res.intent).toBe('compare');
+    expect(res.sources).toEqual(['Sprint Review', 'Sprint Retrospective']);
+  });
+
+  it('recognizes present-tense "compare(s) with" as a parseable comparison form', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'How does the Sprint Review compare with the Sprint Retrospective?',
+      lang: 'en',
+      chunks,
+    });
+    expect(res.topicality).toBe('on');
+    expect(res.intent).toBe('compare');
+    expect(res.sources).toEqual(['Sprint Review', 'Sprint Retrospective']);
+  });
+
+  // Property test: for a compare-intent question whose form extractSubjects()
+  // cannot parse at all (no "between X and Y", no COMPARE_SEPARATORS match,
+  // no "vs"/"versus"), the two-subject branch must never run — so `sources`
+  // can never come back as two fabricated headings, regardless of which
+  // module answers or how much incidental vocabulary overlap it has.
+  const modules = ['m1-roles', 'm2-events', 'm3-metrics', 'm4-artifacts', 'm5-capstone'];
+  for (const mod of modules) {
+    it(`"${mod}": an unparseable compare form never returns two fabricated sources`, () => {
+      const chunks = loadModule(mod, 'en').knowledgeChunks;
+      const res = answerQuestion({
+        question: 'Compare the Product Backlog and the Sprint Backlog in one sentence.',
+        lang: 'en',
+        chunks,
+      });
+      expect(res.sources.length).toBeLessThanOrEqual(1);
+    });
+  }
+});
+
 // SS-22: confidence is computed but was never exposed as anything a caller
 // could act on — a near-zero-confidence answer looked exactly as assertive
 // as a well-grounded one, and the "off" branch didn't even return the field.
