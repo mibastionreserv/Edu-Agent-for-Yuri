@@ -266,15 +266,21 @@ function Classroom({
       .catch((e) => { if (alive) { setError(e.message || ui.errorGeneric); setLoading(false); } });
     return () => {
       alive = false; stopAll();
-      // The presenter-dock subtree (SimliAvatar + narration <audio>) is torn
-      // down and rebuilt for the new lang/module, but Classroom itself is
-      // not remounted — these latches belong to the OLD SimliAvatar
-      // instance and must not be inherited by the new one, or
-      // ensureLiveAvatarFromElement() hands back an already-resolved
-      // promise for a connection that no longer exists (SS-10).
+      // The presenter-dock subtree (SimliAvatar/TavusAvatar + narration
+      // <audio>) is torn down and rebuilt for the new lang/module, but
+      // Classroom itself is not remounted — these latches belong to the OLD
+      // avatar instance and must not be inherited by the new one, or
+      // ensureLiveAvatarFromElement()/ensureTavusAvatar() hands back an
+      // already-resolved promise for a connection that no longer exists
+      // (SS-10, and its Tavus-side repeat, SS-29).
       simliConnectReadyRef.current = null;
       simliAttemptedRef.current = false;
       simliUpRef.current = false;
+      tavusReadyRef.current = null;
+      // tavusStoppedResolveRef is NOT reset here: stopAll() above already
+      // resolves and nulls it (via stopSpeechRef.current()) whenever a Tavus
+      // utterance was in flight, and it is otherwise always null between
+      // speakViaTavus() calls — nothing stale to inherit.
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId, lang]);

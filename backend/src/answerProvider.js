@@ -1,4 +1,5 @@
 import { answerQuestion } from './qa.js';
+import { normalizeAnswer } from './qaContract.js';
 
 // getAnswer chooses the answer engine:
 //  - Default: the local grounded composer in qa.js (no key, deterministic).
@@ -29,7 +30,7 @@ export async function getAnswer({ question, lang, module, history = [], avatarId
   // in the same canned off-topic reply forever — the learner kept saying
   // "yes please" and kept getting "that's outside our topic". The local
   // engine remains the fallback when no LLM is configured or the call fails.
-  if (!base || !key) return { ...local, provider: 'local' };
+  if (!base || !key) return normalizeAnswer(local, { provider: 'local' });
 
   try {
     const context = chunks.map((c) => `## ${c.title}\n${c.text}`).join('\n\n');
@@ -43,6 +44,7 @@ export async function getAnswer({ question, lang, module, history = [], avatarId
       '(b) A content question about the course: open with one short, natural acknowledgment — e.g. "Thank you for the question." — varied to fit how closely it relates to the topic you are currently teaching (very relevant: appreciate that it is right on topic; loosely related: note it touches a nearby idea; tangential: gently note it goes a bit beyond today\'s topic). Then go straight into the answer.',
       '(c) A content question with no support in the course material: briefly and kindly say it is beyond this part of the course and invite a question on the current topic. Do not repeat this same sentence verbatim across turns — vary the wording, and use the conversation history to react to what was already said.',
       'For content answers use ONLY the course material below. You may explain, rephrase, give a short example, or compare concepts, but never add facts that are not supported by the material. Keep it concise and conversational.',
+      'Before your reply, output exactly one line "TOPICALITY: on" or "TOPICALITY: off" (off only for case (c) above), then a blank line, then your reply to the learner.',
       '\n--- COURSE MATERIAL ---\n', context,
     ].join(' ');
     const msgs = [
@@ -66,24 +68,41 @@ export async function getAnswer({ question, lang, module, history = [], avatarId
       throw new Error(`LLM ${res.status}`);
     }
     const data = await res.json();
-    const text = data.choices?.[0]?.message?.content?.trim();
-    if (!text) throw new Error('empty LLM answer');
+    const raw = data.choices?.[0]?.message?.content?.trim();
+    if (!raw) throw new Error('empty LLM answer');
+    // topicality is the model's OWN decision (SS-27), read from a leading
+    // "TOPICALITY: on|off" tag it was instructed to emit, not borrowed from
+    // the local classifier — the two engines routinely disagree on what's
+    // in scope. If the model didn't follow the format, fall back to the
+    // local classifier, but log it: a silent fallback here previously made
+    // topicality mean "whatever the OTHER engine decided" without anyone
+    // noticing (SS-19/Pattern C).
+    const tagMatch = raw.match(/^TOPICALITY:\s*(on|off)\s*$/im);
+    let topicality;
+    let text;
+    if (tagMatch && tagMatch.index === 0) {
+      topicality = tagMatch[1].toLowerCase();
+      text = raw.slice(tagMatch[0].length).replace(/^\s*\n+/, '').trim();
+    } else {
+      console.error('[llm] no TOPICALITY tag, falling back to local classification');
+      topicality = local.topicality;
+      text = raw;
+    }
     // No source/sources here on purpose: the LLM answers from the FULL
     // module context while local.source/sources come from an independent
     // keyword retriever over the same text — the two routinely disagree on
     // which chunk was actually used, showing a citation that doesn't match
     // the answer. Omitting it is safer than a citation that misleads.
-    // topicality is borrowed from the local classifier (not hardcoded 'on')
-    // so the frontend's m.topicality filter/styling reflects reality instead
-    // of treating every LLM answer, including off-topic ones, as on-topic.
     // No local-style confidence score exists for an LLM answer, so certainty
     // defaults to 'high' (SS-22) — a fluent, coherent completion doesn't hedge
-    // the way a weak keyword-retrieval match does.
-    return {
-      topicality: local.topicality, answer: text, intent: local.intent, provider: 'llm', certainty: 'high',
-    };
+    // the way a weak keyword-retrieval match does, and this code has no
+    // calibrated LLM-confidence signal to use instead (SS-27: a deliberate
+    // documented default, not a placeholder).
+    return normalizeAnswer({
+      topicality, answer: text, intent: local.intent, certainty: 'high',
+    }, { provider: 'llm' });
   } catch (err) {
     console.error(`[llm] falling back to local: ${err && err.message}`);
-    return { ...local, provider: 'local' };
+    return normalizeAnswer(local, { provider: 'local' });
   }
 }
