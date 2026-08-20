@@ -28,6 +28,16 @@ describe('API flow: course -> auth -> progress -> ask', () => {
   const creds = { email: 'qa.user@example.com', password: 'super-secret-123', displayName: 'QA User' };
   let token;
 
+  // SS-32: /api/health must expose the deployed commit so deploy tooling can
+  // confirm a fresh Docker image actually shipped, without server log access.
+  it('reports commit and builtAt on the health check', async () => {
+    const res = await request(app).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body).toHaveProperty('commit');
+    expect(res.body).toHaveProperty('builtAt');
+  });
+
   it('serves the localized course listing (4 languages)', async () => {
     const res = await request(app).get('/api/course?lang=en');
     expect(res.status).toBe(200);

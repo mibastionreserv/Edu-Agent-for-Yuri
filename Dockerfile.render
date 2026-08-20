@@ -16,15 +16,15 @@
 FROM node:20-alpine AS frontend
 WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install --no-audit --no-fund
-# simli-client@3.x ships dist/index.js requiring "./Client" but the file on
-# disk is dist/client.js (lowercase). That's harmless on case-insensitive
-# filesystems (macOS/Windows) but breaks Vite's build on Linux/Docker with
-# "Could not resolve './Client'". Add the capitalized alias the package
-# should have shipped; safe to remove once upstream fixes it.
-RUN cp node_modules/simli-client/dist/client.js node_modules/simli-client/dist/Client.js \
- && cp node_modules/simli-client/dist/client.d.ts node_modules/simli-client/dist/Client.d.ts
+# scripts/ must land before `npm ci` because its postinstall hook
+# (fix-simli-client-casing.js) runs immediately after install.
+COPY frontend/scripts ./scripts
+RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+# Render passes RENDER_GIT_COMMIT as a build arg; re-exporting it as ENV
+# makes it visible to `vite build` (see vite.config.js define block, SS-32).
+ARG RENDER_GIT_COMMIT
+ENV RENDER_GIT_COMMIT=${RENDER_GIT_COMMIT}
 RUN npm run build          # produces /fe/dist
 
 # ---------- Stage 2: backend + static frontend ----------
@@ -45,6 +45,10 @@ COPY course-content ./course-content
 # Built frontend goes where app.js looks for it: <app>/../public relative to
 # src/, i.e. /app/public.
 COPY --from=frontend /fe/dist ./public
+
+# Stamp the image build time (SS-32) so /api/health can prove a fresh image
+# actually deployed, without needing server log access.
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > BUILD_TIME
 
 ENV NODE_ENV=production
 ENV CONTENT_DIR=/app/course-content

@@ -1,7 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   validateCredentials, hashPassword, verifyPassword, issueToken, requireAuth,
 } from './auth.js';
@@ -14,6 +14,18 @@ import { createConversation, endConversation } from './tavus.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Dockerfile.render stamps this file with the image build time (SS-32); it
+// doesn't exist outside the container (local dev, tests), hence the try/catch.
+function readBuildTime() {
+  try {
+    return readFileSync(join(__dirname, '..', 'BUILD_TIME'), 'utf8').trim();
+  } catch {
+    return process.env.BUILD_TIME || 'unknown';
+  }
+}
+
+const builtAt = readBuildTime();
+
 // createApp(pool) -> configured express app. Pool is injected so tests can pass
 // an in-memory database.
 export function createApp(pool) {
@@ -21,7 +33,13 @@ export function createApp(pool) {
   app.use(express.json({ limit: '256kb' }));
 
   // --- health ---
-  app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+  // commit/builtAt let deploy tooling confirm a fresh Docker image actually
+  // landed on Render (SS-32), without needing server log access.
+  app.get('/api/health', (_req, res) => res.json({
+    status: 'ok',
+    commit: process.env.RENDER_GIT_COMMIT || 'unknown',
+    builtAt,
+  }));
 
   // --- static course assets (public course material, read-only) ---
   app.use('/content', express.static(contentDir(), { fallthrough: true }));
