@@ -410,6 +410,12 @@ export function Classroom({
   // "🗣 Voice" indicator can react to it (refs/module state don't trigger a
   // re-render on their own) — SS-4.
   const [ttsDown, setTtsDown] = useState(() => ttsCircuit.state().status !== 'closed');
+  // A single line can fall back to the browser voice without the circuit
+  // ever opening (a transient failure — 5xx/no-audio/network blip — never
+  // trips it, see ttsCircuit.js's SS-12 note), so `ttsDown` alone isn't
+  // enough to know the "🗣 Voice" indicator's ttsVoice label is still
+  // accurate; this tracks whether the browser voice has genuinely spoken.
+  const [webSpeechUsed, setWebSpeechUsed] = useState(false);
   function noteTtsSuccess() { ttsCircuit.recordSuccess(); setTtsDown(false); }
   // Returns the failure's classification ('permanent' | 'rate-limit' |
   // 'transient') so callers can also decide whether an inline retry is
@@ -899,7 +905,7 @@ export function Classroom({
     stopSpeechRef.current = await speak(text, lang, {
       // The utterance's real 'start' event (SS-31) — not speak()'s own
       // resolution, which only means the call was handed to speechSynthesis.
-      onStart: () => setSpeaking(true),
+      onStart: () => { setSpeaking(true); setWebSpeechUsed(true); },
       onBoundary: driveBoard ? (ci) => {
         const abs = charOffset + ci;
         lastCharRef.current = Math.max(lastCharRef.current, abs);
@@ -1253,22 +1259,27 @@ export function Classroom({
             {/* The real voice for every line (narration, resume phrase, Q&A
                 answers) is this persona's server-TTS voice, not the browser's
                 Web Speech voice — show that as the primary indicator, and
-                only call out the browser fallback once server TTS has
-                actually latched off for the session (SS-4). When it has,
-                voiceInfo.status distinguishes "still resolving" (pending)
-                from "genuinely no match for this language" (none) — showing
-                a placeholder fallback name AND "no fallback voice found" at
-                the same time was the SS-23 bug; while it's still pending we
-                show neither the "(fallback)" suffix nor the warning line. */}
-            {!isTavus && (ttsDown ? voiceInfo.status !== 'none' : true) && (
+                only call out the browser fallback once it has actually been
+                used (whole-session latch via `ttsDown`, SS-4, OR a single
+                line that fell back without tripping the circuit at all —
+                `webSpeechUsed`, see its declaration above). When either is
+                true, voiceInfo.status distinguishes "still resolving"
+                (pending) from "genuinely no match for this language" (none)
+                — showing a placeholder fallback name AND "no fallback voice
+                found" at the same time was the SS-23 bug; while it's still
+                pending we show neither the "(fallback)" suffix nor the
+                warning line, and we never show the server persona voice
+                either (that was this ticket's bug: it named the wrong
+                entity — a voice that isn't the one actually speaking). */}
+            {!isTavus && ((ttsDown || webSpeechUsed) ? voiceInfo.status !== 'none' : true) && (
               <div className="voicename">
-                🗣 {ui.voice}: {ttsDown
+                🗣 {ui.voice}: {(ttsDown || webSpeechUsed)
                   ? (voiceInfo.status === 'ready' ? voiceInfo.name : '…')
                   : ttsVoice}
-                {ttsDown && voiceInfo.status === 'ready' && ' (fallback)'}
+                {(ttsDown || webSpeechUsed) && voiceInfo.status === 'ready' && ' (fallback)'}
               </div>
             )}
-            {ttsDown && voiceInfo.status === 'none' && (
+            {(ttsDown || webSpeechUsed) && voiceInfo.status === 'none' && (
               <div className="voicename">{ui.voiceUnavailable || ''}</div>
             )}
           </div>
