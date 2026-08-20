@@ -24,6 +24,8 @@
   "type": "Type",
   "speak": "Speak",
   "play": "Play",
+  "pause": "Pause",
+  "prev": "Previous segment",
   "next": "Next segment",
   "ask": "Ask",
   "noMore": "No more · resume",

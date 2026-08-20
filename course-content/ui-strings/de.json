@@ -24,6 +24,8 @@
   "type": "Tippen",
   "speak": "Sprechen",
   "play": "Abspielen",
+  "pause": "Pause",
+  "prev": "Vorheriger Abschnitt",
   "next": "Nächster Abschnitt",
   "ask": "Fragen",
   "noMore": "Keine mehr · weiter",

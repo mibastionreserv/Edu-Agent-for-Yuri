@@ -1121,8 +1121,8 @@ function Classroom({
           </div>
 
           <div className="controls">
-            <button className="tbtn" onClick={() => goSegment(seg - 1)} disabled={avatarConnecting || seg === 0} aria-label={ui.type}>⏮</button>
-            <button className="tbtn play" onClick={togglePlay} disabled={avatarConnecting} aria-label={ui.play}>{speaking ? '⏸' : '▶'}</button>
+            <button className="tbtn" onClick={() => goSegment(seg - 1)} disabled={avatarConnecting || seg === 0} aria-label={ui.prev}>⏮</button>
+            <button className="tbtn play" onClick={togglePlay} disabled={avatarConnecting} aria-label={speaking ? ui.pause : ui.play}>{speaking ? '⏸' : '▶'}</button>
             <button className="tbtn" onClick={() => goSegment(seg + 1)} disabled={avatarConnecting || isLast} aria-label={ui.next}>⏭</button>
             <div className="progress">
               <span>{`${ui.module} ${mod.order || ''} · ${seg + 1}/${mod.segments.length}`}</span>

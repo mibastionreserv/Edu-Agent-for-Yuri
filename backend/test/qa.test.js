@@ -78,6 +78,34 @@ describe('grounded Q&A business flow (Practical Scrum - Events module)', () => {
   });
 });
 
+describe('grounded Q&A business flow (Practical Scrum - Roles module) - SS-17', () => {
+  let chunks;
+  beforeAll(() => {
+    const mod = loadModule('m1-roles', 'en');
+    chunks = mod.knowledgeChunks;
+    expect(chunks.length).toBeGreaterThan(0);
+  });
+
+  it('answers "What does the Scrum Master do?" from the Scrum Master heading, not an earlier tied heading', () => {
+    const res = answerQuestion({ question: 'What does the Scrum Master do?', lang: 'en', chunks });
+    expect(res.topicality).toBe('on');
+    expect(res.source).toBe('Scrum Master');
+    expect(res.answer.toLowerCase()).toMatch(/accountable for the team's effectiveness/);
+  });
+
+  it('does not fabricate an answer for material this module does not cover (Sprint Goal is an events-module topic)', () => {
+    const res = answerQuestion({ question: 'What is the Sprint Goal?', lang: 'en', chunks });
+    expect(res.topicality).toBe('off');
+    expect(res.source).toBeNull();
+  });
+
+  it('keeps ranking stable when chunk order is shuffled (source must not depend on file order)', () => {
+    const shuffled = [...chunks].reverse();
+    const res = answerQuestion({ question: 'What does the Scrum Master do?', lang: 'en', chunks: shuffled });
+    expect(res.source).toBe('Scrum Master');
+  });
+});
+
 describe('multilingual grounding (Italian, Greek, metrics)', () => {
   it('answers an on-topic Italian question from the Italian knowledge base', () => {
     const mod = loadModule('m2-events', 'it');
@@ -98,4 +126,46 @@ describe('multilingual grounding (Italian, Greek, metrics)', () => {
     expect(res.topicality).toBe('on');
     expect(res.answer.toLowerCase()).toMatch(/story points|forecast|team/);
   });
+});
+
+// SS-17: the original bug was that `source` depended on where a heading sat
+// in the markdown file (stable-sort tie-breaking), not on relevance. These
+// property tests shuffle both chunk order and sentence order within a chunk
+// for a small golden set and assert the picked `source` never moves.
+describe('ranking is order-independent (SS-17 regression guard)', () => {
+  const golden = [
+    { mod: 'm1-roles', lang: 'en', q: 'What does the Scrum Master do?', expectedSource: 'Scrum Master' },
+    { mod: 'm1-roles', lang: 'en', q: 'What is the Product Owner?', expectedSource: 'Product Owner' },
+    { mod: 'm2-events', lang: 'en', q: 'How long is the Daily Scrum?', expectedSource: 'Daily Scrum' },
+    { mod: 'm2-events', lang: 'en', q: 'What is the Sprint Review?', expectedSource: 'Sprint Review' },
+    { mod: 'm3-metrics', lang: 'en', q: 'What is velocity?', expectedSource: 'Velocity' },
+  ];
+
+  // Deterministic (seeded) shuffle so the test is stable across CI runs.
+  function seededShuffle(arr, seed) {
+    const a = [...arr];
+    let s = seed;
+    for (let i = a.length - 1; i > 0; i -= 1) {
+      s = (s * 1103515245 + 12345) % 2147483648;
+      const j = s % (i + 1);
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function shuffleChunkSentences(chunk, seed) {
+    const sentences = chunk.text.split(/(?<=[.!?])\s+/).filter(Boolean);
+    return { ...chunk, text: seededShuffle(sentences, seed).join(' ') };
+  }
+
+  for (const { mod, lang, q, expectedSource } of golden) {
+    it(`"${q}" (${mod}/${lang}) keeps source "${expectedSource}" under chunk and sentence reordering`, () => {
+      const base = loadModule(mod, lang).knowledgeChunks;
+      for (let seed = 1; seed <= 5; seed += 1) {
+        const shuffledChunks = seededShuffle(base, seed).map((c) => shuffleChunkSentences(c, seed + 100));
+        const res = answerQuestion({ question: q, lang, chunks: shuffledChunks });
+        expect(res.source).toBe(expectedSource);
+      }
+    });
+  }
 });

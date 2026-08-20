@@ -24,6 +24,8 @@
   "type": "Scrivi",
   "speak": "Parla",
   "play": "Riproduci",
+  "pause": "Pausa",
+  "prev": "Segmento precedente",
   "next": "Segmento successivo",
   "ask": "Chiedi",
   "noMore": "Basta · riprendi",
