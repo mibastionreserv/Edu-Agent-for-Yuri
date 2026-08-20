@@ -130,7 +130,10 @@ function revealedFromProgress(charIndex, textLen, nSteps) {
 }
 
 /* ---------------- classroom ---------------- */
-function Classroom({
+// Named export (alongside the default App below) so tests can render the
+// Q&A/presenter panel in isolation without driving the whole login/course
+// picker flow (SS-30/SS-31 regression tests).
+export function Classroom({
   ui, lang, avatarId, course, moduleId, initialSegment, onExit, onSaved,
 }) {
   const [mod, setMod] = useState(null);
@@ -146,6 +149,11 @@ function Classroom({
   const [thread, setThread] = useState([]);
   const [question, setQuestion] = useState('');
   const [asking, setAsking] = useState(false);
+  // Synchronous latch alongside `asking` (SS-30): the `asking` state's
+  // disabled={} only takes effect after React commits, so several clicks
+  // fired in the same task (or Enter/voice, neither of which even checks
+  // `asking`) can all read the same stale false before the first commit.
+  const askingRef = useRef(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceReplies, setVoiceReplies] = useState(true);
   // Off by default per SRS §UI — captions are opt-in via the caption chip,
@@ -281,6 +289,11 @@ function Classroom({
       // resolves and nulls it (via stopSpeechRef.current()) whenever a Tavus
       // utterance was in flight, and it is otherwise always null between
       // speakViaTavus() calls — nothing stale to inherit.
+      // avatarConnecting/photoTtsWarmedRef belong to this same OLD instance
+      // too — an overlay or "already warmed" latch left over from it must
+      // not bleed into the freshly (re)connecting one (SS-31).
+      setAvatarConnecting(false);
+      photoTtsWarmedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId, lang]);
@@ -296,6 +309,18 @@ function Classroom({
     // A persona swap without a Classroom remount (personaGender) must also
     // re-resolve the fallback voice, not just a language change (SS-23).
   }, [lang, personaGender]);
+
+  // Watchdog: whichever code path raised the "connecting" overlay (Simli/
+  // Tavus pre-warm, a server-TTS fetch) is expected to clear it itself once
+  // it settles — but an unclassified/hung failure must not leave "Loading
+  // the presenter…" on screen forever (SS-31). One generic timer, keyed off
+  // the state itself, covers every call site instead of duplicating one at
+  // each of them.
+  useEffect(() => {
+    if (!avatarConnecting) return undefined;
+    const t = setTimeout(() => setAvatarConnecting(false), 7000);
+    return () => clearTimeout(t);
+  }, [avatarConnecting]);
 
   // Hard stop: cancels speech outright and forgets any resume position. Used
   // for segment navigation and unmount — a real "leave this moment" action,
@@ -530,6 +555,7 @@ function Classroom({
     }
 
     tavusRef.current.sendText(text);
+    setSpeaking(true); // real speech, not just the connection, starts here (SS-31)
     await stopped;
     finish();
     return true;
@@ -744,7 +770,9 @@ function Classroom({
       await el.play();
       // Voice is actually flowing now — drop the first-load overlay and (for
       // photo personas) turn on the gentle speaking bob; the mouth itself is
-      // driven by the amplitude loop, not by this flag.
+      // driven by the amplitude loop, not by this flag. This is also where
+      // `speaking` itself turns true (SS-31) — see speakWithMouth.
+      setSpeaking(true);
       if (photoOverlay) setAvatarConnecting(false);
       if (!simliFaceId) {
         // Personas with no photo (and so no --mouth-driven .ap-mouth overlay
@@ -782,7 +810,11 @@ function Classroom({
     onEnd, driveBoard, charOffset = 0, fullLen,
   } = {}) {
     const myGen = ++speechGenRef.current;
-    setSpeaking(true);
+    // `speaking` itself is NOT raised here anymore (SS-31): it used to fire
+    // before any of the three playback paths below had actually produced
+    // sound, so a TTS fetch stuck on the 25-30s budget/timeout left the
+    // "Speaking" badge (and the pause icon) on for that whole stretch with
+    // no audio playing. Each path now sets it once real playback starts.
     interruptedRef.current = false;
     // NOTE: the 220ms mouth blink is NOT started here anymore — it made the
     // photo twitch while the TTS audio was still loading, before any sound.
@@ -865,6 +897,9 @@ function Classroom({
     }
 
     stopSpeechRef.current = await speak(text, lang, {
+      // The utterance's real 'start' event (SS-31) — not speak()'s own
+      // resolution, which only means the call was handed to speechSynthesis.
+      onStart: () => setSpeaking(true),
       onBoundary: driveBoard ? (ci) => {
         const abs = charOffset + ci;
         lastCharRef.current = Math.max(lastCharRef.current, abs);
@@ -964,6 +999,8 @@ function Classroom({
   async function submitQuestion(text, viaVoice = false) {
     const q = (text ?? question).trim();
     if (!q) return;
+    if (askingRef.current) return;
+    askingRef.current = true;
     if (!handUp) { pauseNarration(); setHandUp(true); }
     const history = threadRef.current
       .filter((m) => m.role === 'learner' || (m.role === 'presenter' && m.topicality))
@@ -993,7 +1030,7 @@ function Classroom({
     } catch (e) {
       setThinking(false);
       setThread((t) => [...t, { role: 'presenter', text: e.message || ui.errorGeneric, topicality: 'error' }]);
-    } finally { setAsking(false); }
+    } finally { askingRef.current = false; setAsking(false); }
   }
 
   // Pressing the Speak tab is the one and only mic trigger: it turns speech
@@ -1203,7 +1240,8 @@ function Classroom({
               <div className="ask-row">
                 <input value={question} placeholder={ui.askPlaceholder}
                   onChange={(e) => setQuestion(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && submitQuestion()} />
+                  onKeyDown={(e) => e.key === 'Enter' && submitQuestion()}
+                  disabled={asking} />
                 <button className="primary sm" onClick={() => submitQuestion()} disabled={asking}>{ui.ask}</button>
               </div>
             ) : (

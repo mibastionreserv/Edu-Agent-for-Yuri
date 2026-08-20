@@ -76,7 +76,14 @@ export async function fetchTtsAudio(text, voice) {
       signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
     });
   } catch (e) {
-    if (e && e.name === 'TimeoutError') throw new Error('tts timed out');
+    if (e && e.name === 'TimeoutError') {
+      // `detail` set here too (not just message) so ttsCircuit.classify(),
+      // which reads only `err.detail`, sees this the same way it sees the
+      // server's own "TTS budget exhausted" (SS-31).
+      const err = new Error('tts timed out');
+      err.detail = 'tts timed out';
+      throw err;
+    }
     throw e;
   }
   // Attach status/detail as their own fields (not just baked into the

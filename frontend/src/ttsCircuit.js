@@ -9,9 +9,11 @@
 //
 // State machine: closed -> (failure) -> open -> (cooldown elapsed) ->
 // half-open (exactly ONE caller is granted the next attempt) -> closed on
-// success, or open again with a longer cooldown on failure. Everything else
-// (5xx, "no audio", a timeout, a network blip) is a one-off flake and never
-// opens the circuit at all (SS-12).
+// success, or open again with a longer cooldown on failure. A real synthesis
+// timeout/budget exhaustion (SS-31) opens the circuit the same way a 429
+// does — it's a genuine stall, not a flake. Everything else (5xx, "no
+// audio", a network blip) IS a one-off flake and never opens the circuit at
+// all (SS-12).
 //
 // Module-level singleton on purpose: an upstream TTS outage is a property of
 // the session/backend, not of whichever Classroom instance happens to be
@@ -47,6 +49,11 @@ function classify(err) {
   if (/not configured/i.test(detail)) return 'permanent';
   if (/\b(401|403)\b/.test(detail)) return 'permanent';
   if (/\b429\b/.test(detail)) return 'rate-limit';
+  // The server's 25s synthesis budget (backend/src/tts.js) or the client's
+  // own 30s fetch timeout (api.js, which sets `detail` to the same text) —
+  // a real stall, not a one-off flake (SS-31): retrying it inline just pays
+  // the same ~25-30s again, so it must open the circuit instead.
+  if (/budget exhausted|timed out/i.test(detail)) return 'timeout';
   return 'transient';
 }
 
@@ -89,7 +96,7 @@ export function recordFailure(err) {
     openUntil = Infinity;
     return kind;
   }
-  if (kind === 'rate-limit') {
+  if (kind === 'rate-limit' || kind === 'timeout') {
     consecutiveFailures += 1;
     status = 'open';
     openUntil = now() + backoffFor(consecutiveFailures);

@@ -29,6 +29,19 @@ function transientErr() {
   e.detail = '';
   return e;
 }
+function budgetExhaustedErr() {
+  // backend/src/tts.js's own message, surfaced via app.js's `detail` field.
+  const e = new Error('tts failed 502 TTS budget exhausted');
+  e.status = 502;
+  e.detail = 'TTS budget exhausted';
+  return e;
+}
+function clientTimeoutErr() {
+  // frontend/src/api.js's own AbortSignal.timeout() catch (SS-31).
+  const e = new Error('tts timed out');
+  e.detail = 'tts timed out';
+  return e;
+}
 
 describe('ttsCircuit (SS-20)', () => {
   beforeEach(() => {
@@ -125,6 +138,26 @@ describe('ttsCircuit (SS-20)', () => {
     ttsCircuit.recordSuccess();
     expect(ttsCircuit.state().status).toBe('closed');
     expect(ttsCircuit.canAttempt()).toBe(true);
+  });
+
+  // SS-31: a real 25-30s synthesis stall must not be classified as a flake
+  // (which would retry inline, paying the same stall a second time) nor
+  // left un-classified enough to leave the circuit closed.
+  it('"TTS budget exhausted" is not classified as transient and opens the circuit', () => {
+    const kind = ttsCircuit.recordFailure(budgetExhaustedErr());
+    expect(kind).toBe('timeout');
+    expect(ttsCircuit.canAttempt()).toBe(false);
+    expect(ttsCircuit.state().status).toBe('open');
+    // Bounded, like a rate-limit — not latched for the whole session.
+    vi.advanceTimersByTime(45_000);
+    expect(ttsCircuit.canAttempt()).toBe(true);
+  });
+
+  it('the client-side "tts timed out" error is classified the same way', () => {
+    const kind = ttsCircuit.recordFailure(clientTimeoutErr());
+    expect(kind).toBe('timeout');
+    expect(ttsCircuit.canAttempt()).toBe(false);
+    expect(ttsCircuit.state().status).toBe('open');
   });
 
   it('an abandoned half-open probe does not wedge the circuit open forever', () => {
