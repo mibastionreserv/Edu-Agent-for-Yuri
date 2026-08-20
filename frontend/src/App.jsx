@@ -2,13 +2,14 @@ import React, {
   useEffect, useMemo, useRef, useState,
 } from 'react';
 import { api, getToken, setToken, fetchTtsAudio } from './api.js';
+import * as ttsCircuit from './ttsCircuit.js';
 import { avatarSVG } from './avatar.js';
 import SimliAvatar from './SimliAvatar.jsx';
 import TavusAvatar from './TavusAvatar.jsx';
 import Board from './Board.jsx';
 import KnowledgeCheck from './KnowledgeCheck.jsx';
 import {
-  speak, cancelSpeech, pickVoiceName, speechSupported, langTag,
+  speak, cancelSpeech, pickVoiceInfo, speechSupported, langTag,
 } from './speech.js';
 
 const COURSE_ID = 'practical-scrum';
@@ -76,17 +77,6 @@ const DEFAULT_TTS_VOICE = 'Gacrux';
 // fallback for Daniel and one for Mei-Lin don't both collapse onto the same
 // system voice (SS-12).
 const PERSONA_GENDER = { mira: 'female', daniel: 'male', meilin: 'female' };
-
-// Session-wide unrecoverable TTS failures: quota exhaustion and auth/config
-// problems, matched against the "TTS <status>" / "TTS is not configured."
-// detail the backend surfaces (backend/src/tts.js, backend/src/app.js).
-// Everything else (5xx, "no audio", a timeout, a network blip) is a
-// transient, per-line flake and must NOT latch the whole session onto the
-// fallback voice (SS-12).
-function isPermanentTtsFailure(err) {
-  const msg = String((err && err.message) || '');
-  return /\b(429|401|403)\b/.test(msg) || /not configured/i.test(msg);
-}
 
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
@@ -162,7 +152,13 @@ function Classroom({
   // not shown automatically.
   const [captionsOn, setCaptionsOn] = useState(false);
   const [showCheck, setShowCheck] = useState(false);
-  const [voiceName, setVoiceName] = useState('');
+  // Three-way, not the old two-valued voiceName string (SS-23): 'pending'
+  // (the browser's voice list hasn't actually loaded yet — up to ~700ms via
+  // 'voiceschanged', see speech.js loadVoices()) is a distinct state from
+  // 'none' (the list DID load and genuinely has no match for this
+  // language), so the UI never shows both "…(fallback)" and "no fallback
+  // voice found" at once.
+  const [voiceInfo, setVoiceInfo] = useState({ status: 'pending', name: '' });
   const [paused, setPaused] = useState(false);
   const [simliFailed, setSimliFailed] = useState(false);
   const [tavusFailed, setTavusFailed] = useState(false);
@@ -287,9 +283,13 @@ function Classroom({
 
   useEffect(() => {
     let alive = true;
-    if (speechSupported()) pickVoiceName(lang, personaGender).then((n) => { if (alive) setVoiceName(n || ''); });
+    if (!speechSupported()) { setVoiceInfo({ status: 'none', name: '' }); return () => { alive = false; }; }
+    setVoiceInfo({ status: 'pending', name: '' });
+    pickVoiceInfo(lang, personaGender).then((info) => { if (alive) setVoiceInfo(info); });
     return () => { alive = false; };
-  }, [lang]);
+    // A persona swap without a Classroom remount (personaGender) must also
+    // re-resolve the fallback voice, not just a language change (SS-23).
+  }, [lang, personaGender]);
 
   // Hard stop: cancels speech outright and forgets any resume position. Used
   // for segment navigation and unmount — a real "leave this moment" action,
@@ -370,15 +370,34 @@ function Classroom({
   // the full-screen loader is shown only for that first load, mirroring how
   // live avatars show it only for their first connect.
   const photoTtsWarmedRef = useRef(false);
-  // Set once server TTS has failed for this session. From then on the whole
-  // lesson uses the browser voice consistently instead of retrying per line
-  // — silence is unacceptable, but so is flipping between two different
-  // voices mid-lesson. One voice, start to finish, whichever one is usable.
-  const ttsDownRef = useRef(false);
-  // Mirrors ttsDownRef in React state purely so the "🗣 Voice" indicator can
-  // react to it (refs don't trigger a re-render on their own) — SS-4.
-  const [ttsDown, setTtsDown] = useState(false);
-  function markTtsDown() { ttsDownRef.current = true; setTtsDown(true); }
+  // Whether server TTS is currently usable is owned by ttsCircuit.js (a
+  // module-level circuit breaker, not component state — see SS-20): a 429
+  // opens it for a bounded, escalating backoff so one rate-limit blip
+  // doesn't strand the rest of the lesson on the browser voice, while a
+  // genuinely permanent failure (401/403/"not configured") opens it for the
+  // whole session. `ttsDown` mirrors its status in React state purely so the
+  // "🗣 Voice" indicator can react to it (refs/module state don't trigger a
+  // re-render on their own) — SS-4.
+  const [ttsDown, setTtsDown] = useState(() => ttsCircuit.state().status !== 'closed');
+  function noteTtsSuccess() { ttsCircuit.recordSuccess(); setTtsDown(false); }
+  // Returns the failure's classification ('permanent' | 'rate-limit' |
+  // 'transient') so callers can also decide whether an inline retry is
+  // worth it — never for the first two (see ttsCircuit.js).
+  function noteTtsFailure(err) {
+    const kind = ttsCircuit.recordFailure(err);
+    setTtsDown(ttsCircuit.state().status !== 'closed');
+    return kind;
+  }
+  // The real per-attempt gate (mutating — see ttsCircuit.canAttempt(),
+  // grants exactly one half-open probe once the cooldown elapses). Used ONLY
+  // at the actual attempt site below, never speculatively.
+  function canAttemptTts() { return ttsCircuit.canAttempt(); }
+  // Coarse, non-mutating "is it even worth trying" check for deciding
+  // whether to voice a Q&A answer at all — reading state() here instead of
+  // calling canAttemptTts() means this check doesn't itself consume the one
+  // permitted half-open probe that the real attempt (inside speakWithMouth)
+  // reserves.
+  function ttsMaybeAvailable() { return ttsCircuit.state().status !== 'open'; }
 
   // Hands the narration <audio> element to SimliAvatar and resolves once the
   // avatar is genuinely on screen (or failed). Only ever attempts once per
@@ -430,11 +449,12 @@ function Classroom({
   // resume phrase is free when it is cached and, when it is not, both warms
   // the cache and reveals an unavailable TTS before anything is spoken.
   useEffect(() => {
-    if (loading || !mod || isTavus) return;
+    if (loading || !mod || isTavus || !canAttemptTts()) return;
     const probe = ui.resumeAfterQuestion || 'Let us continue.';
     let alive = true;
     fetchTtsAudio(probe, ttsVoice)
-      .catch((e) => { if (alive && isPermanentTtsFailure(e)) markTtsDown(); });
+      .then(() => { if (alive) noteTtsSuccess(); })
+      .catch((e) => { if (alive) noteTtsFailure(e); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
@@ -560,15 +580,15 @@ function Classroom({
     try {
       blob = await fetchTtsAudio(text, ttsVoice);
     } catch (firstErr) {
-      // Unrecoverable for the rest of the session (quota/auth/config):
-      // retrying only this line — or any later one — is pointless, and for
-      // 429 specifically it's actively harmful, burning more of the quota
-      // we just ran out of. Latch so the WHOLE session stops hitting the
-      // server. Everything else (5xx, no-audio, timeout, network blip) is a
-      // one-off flake — fall back to the browser voice for THIS line only,
-      // the next line still tries server TTS (SS-12).
-      if (isPermanentTtsFailure(firstErr)) {
-        markTtsDown();
+      // A rate-limit or auth/config failure opens the circuit (bounded
+      // backoff for 429, the whole session for a real permanent failure —
+      // see ttsCircuit.js) — retrying only this line, or any later one
+      // before it reopens, is pointless, and for 429 specifically it's
+      // actively harmful, burning more of the quota we just ran out of.
+      // Everything else (5xx, no-audio, timeout, network blip) is a one-off
+      // flake — fall back to the browser voice for THIS line only, the next
+      // line still tries server TTS (SS-12).
+      if (noteTtsFailure(firstErr) !== 'transient') {
         photoTtsWarmedRef.current = true;
         if (showOverlay) setAvatarConnecting(false);
         if (presenterDockRef.current) presenterDockRef.current.removeAttribute('data-lipsync');
@@ -586,7 +606,7 @@ function Classroom({
       try {
         blob = await fetchTtsAudio(text, ttsVoice);
       } catch (secondErr) {
-        if (isPermanentTtsFailure(secondErr)) markTtsDown();
+        noteTtsFailure(secondErr);
         photoTtsWarmedRef.current = true; // don't re-show the loader per line
         if (showOverlay) setAvatarConnecting(false);
         // Web Speech takes over — let the blink fallback animate the mouth,
@@ -595,6 +615,7 @@ function Classroom({
         return false;
       }
     }
+    noteTtsSuccess();
     photoTtsWarmedRef.current = true;
     const objectUrl = URL.createObjectURL(blob);
 
@@ -789,12 +810,12 @@ function Classroom({
     //
     // Server TTS is preferred (better voice, and it's the only audio a live
     // avatar can lip-sync to). speakViaServerTts() itself decides whether a
-    // failure is session-wide unrecoverable (quota/auth/config — it latches
-    // ttsDownRef there) or just this one line flaking (5xx, no-audio,
-    // timeout) — in the latter case ttsDownRef stays false and the very
-    // next line tries the server again instead of the whole rest of the
-    // lesson being stuck on the browser voice (SS-12).
-    if (!isTavus && !ttsDownRef.current) {
+    // failure opens the ttsCircuit (a bounded backoff for a 429, the whole
+    // session for a real permanent failure — SS-20) or is just this one line
+    // flaking (5xx, no-audio, timeout), in which case the circuit stays
+    // closed and the very next line tries the server again instead of the
+    // whole rest of the lesson being stuck on the browser voice (SS-12).
+    if (!isTavus && canAttemptTts()) {
       const handled = await speakViaServerTts(text, {
         charOffset, textLen, driveBoard, nSteps, finish, myGen,
       });
@@ -947,13 +968,20 @@ function Classroom({
       const res = await api.ask({ moduleId, lang, question: q, history, askedByVoice: viaVoice, avatarId });
       setThinking(false);
       setThread((t) => [...t, {
-        role: 'presenter', text: res.answer, topicality: res.topicality, source: res.source, sources: res.sources,
+        role: 'presenter',
+        text: res.answer,
+        topicality: res.topicality,
+        source: res.source,
+        sources: res.sources,
+        certainty: res.certainty,
       }]);
       // Real playback for this line goes through server TTS (or Tavus) via
       // speakWithMouth, neither of which depends on Web Speech — only gate on
-      // speechSupported() once server TTS has actually latched off, so the
-      // browser fallback voice remains the true "can we speak at all?" check.
-      if ((viaVoice || voiceReplies) && (!ttsDownRef.current || speechSupported())) {
+      // speechSupported() once the circuit is actually open, so the browser
+      // fallback voice remains the true "can we speak at all?" check. This
+      // is a coarse, non-consuming check (ttsMaybeAvailable), not the real
+      // per-attempt gate — that one lives inside speakWithMouth itself.
+      if ((viaVoice || voiceReplies) && (ttsMaybeAvailable() || speechSupported())) {
         speakWithMouth(res.answer, { driveBoard: false });
       }
     } catch (e) {
@@ -1155,6 +1183,7 @@ function Classroom({
                 {m.role === 'learner' && m.viaVoice && <span className="mic-tag">🎙</span>}
                 {m.text}
                 {m.source && <span className="src">{ui.onTopicSource} · {(m.sources && m.sources.join(', ')) || m.source}</span>}
+                {m.certainty === 'low' && <span className="src low-certainty">⚠ {ui.lowCertainty}</span>}
               </div>
             ))}
             {asking && <div className="bubble a"><Spinner label={ui.thinking} /></div>}
@@ -1181,21 +1210,21 @@ function Classroom({
                 answers) is this persona's server-TTS voice, not the browser's
                 Web Speech voice — show that as the primary indicator, and
                 only call out the browser fallback once server TTS has
-                actually latched off for the session (SS-4). */}
-            {!isTavus && (
+                actually latched off for the session (SS-4). When it has,
+                voiceInfo.status distinguishes "still resolving" (pending)
+                from "genuinely no match for this language" (none) — showing
+                a placeholder fallback name AND "no fallback voice found" at
+                the same time was the SS-23 bug; while it's still pending we
+                show neither the "(fallback)" suffix nor the warning line. */}
+            {!isTavus && (ttsDown ? voiceInfo.status !== 'none' : true) && (
               <div className="voicename">
-                {/* voiceName resolves asynchronously (speechSynthesis voice
-                    list can take up to ~700ms via 'voiceschanged' — see
-                    speech.js loadVoices()). Showing ttsVoice (the SERVER
-                    persona voice) next to "(fallback)" while it is still
-                    pending would misleadingly claim the server voice is
-                    what's about to be heard — show a placeholder instead
-                    until the real fallback voice name is known (SS-16). */}
-                🗣 {ui.voice}: {ttsDown ? (voiceName || '…') : ttsVoice}
-                {ttsDown && ' (fallback)'}
+                🗣 {ui.voice}: {ttsDown
+                  ? (voiceInfo.status === 'ready' ? voiceInfo.name : '…')
+                  : ttsVoice}
+                {ttsDown && voiceInfo.status === 'ready' && ' (fallback)'}
               </div>
             )}
-            {speechSupported() && !voiceName && (
+            {ttsDown && voiceInfo.status === 'none' && (
               <div className="voicename">{ui.voiceUnavailable || ''}</div>
             )}
           </div>

@@ -48,6 +48,7 @@
   "voiceReplies": "Voice replies",
   "voice": "Voice",
   "voiceUnavailable": "No browser fallback voice found for this language.",
+  "lowCertainty": "Not fully sure — feel free to rephrase",
   "qaTitle": "Q&A",
   "askPrompt": "Raise your hand and ask by text or voice.",
   "knowledgeCheck": "Knowledge check",

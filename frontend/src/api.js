@@ -79,13 +79,19 @@ export async function fetchTtsAudio(text, voice) {
     if (e && e.name === 'TimeoutError') throw new Error('tts timed out');
     throw e;
   }
-  // Include the status so callers can distinguish a quota rejection (429,
-  // surfaced by the backend as a 502 with detail "TTS 429") from a transient
-  // flake — retrying the former only burns more quota.
+  // Attach status/detail as their own fields (not just baked into the
+  // message string) so callers can classify the failure off `detail` alone —
+  // the upstream provider's own "TTS 429"/"TTS 401" — instead of matching
+  // digits anywhere in the full message, which used to also catch our OWN
+  // 401 for an expired 12h session (that response has no `detail` at all)
+  // and wrongly treat it as a permanent upstream TTS failure (SS-20).
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.clone().json()).detail || ''; } catch { /* not JSON */ }
-    throw new Error(`tts failed ${res.status}${detail ? ` ${detail}` : ''}`);
+    const err = new Error(`tts failed ${res.status}${detail ? ` ${detail}` : ''}`);
+    err.status = res.status;
+    err.detail = detail;
+    throw err;
   }
   return res.blob();
 }

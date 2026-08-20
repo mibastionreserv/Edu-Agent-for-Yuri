@@ -1,7 +1,7 @@
 import {
-  describe, it, expect, beforeEach, afterEach,
+  describe, it, expect, beforeEach, afterEach, vi,
 } from 'vitest';
-import { pickVoice } from '../src/speech.js';
+import { pickVoice, pickVoiceInfo } from '../src/speech.js';
 
 function makeVoice(name, lang) {
   return { name, lang, localService: true };
@@ -46,5 +46,54 @@ describe('pickVoice gender-aware fallback (SS-12)', () => {
 
     const voice = await pickVoice('en');
     expect(voice.name).toMatch(/david/i);
+  });
+});
+
+// SS-23: voiceName used to be a plain string where '' meant both "still
+// resolving" and "genuinely no match", so the UI could show a fallback
+// placeholder AND "no fallback voice found" at the same time. pickVoiceInfo
+// must keep those two states distinguishable.
+describe('pickVoiceInfo distinguishes pending/ready/none (SS-23)', () => {
+  let originalSynthesis;
+
+  beforeEach(() => {
+    originalSynthesis = window.speechSynthesis;
+  });
+
+  afterEach(() => {
+    window.speechSynthesis = originalSynthesis;
+    vi.useRealTimers();
+  });
+
+  it('reports "none" (not "pending") when the list has genuinely loaded with only en-US voices and the target language is German', async () => {
+    const voices = [makeVoice('Microsoft Zira - English (United States)', 'en-US')];
+    window.speechSynthesis = { getVoices: () => voices };
+
+    const info = await pickVoiceInfo('de');
+    expect(info.status).toBe('none');
+    expect(info.name).toBe('');
+  });
+
+  it('reports "pending" while the voice list is still empty, then "ready" with a name once a German voice has actually loaded', async () => {
+    vi.useFakeTimers();
+    window.speechSynthesis = { getVoices: () => [] };
+
+    // Nothing ever fires 'voiceschanged' here — loadVoices()'s internal wait
+    // times out with the list still empty, which must read as "pending"
+    // (we don't yet know), never as "none" (we definitely know there's no
+    // match) — those are different claims.
+    const pendingPromise = pickVoiceInfo('de');
+    await vi.advanceTimersByTimeAsync(700);
+    const pending = await pendingPromise;
+    expect(pending.status).toBe('pending');
+    expect(pending.name).toBe('');
+
+    // The list has now genuinely loaded (this is what a real 'voiceschanged'
+    // event delivers) — a fresh call resolves definitively.
+    const germanVoice = makeVoice('Microsoft Hedda - German (Germany)', 'de-DE');
+    window.speechSynthesis = { getVoices: () => [germanVoice] };
+    const ready = await pickVoiceInfo('de');
+    expect(ready.status).toBe('ready');
+    expect(ready.name).toMatch(/hedda/i);
   });
 });

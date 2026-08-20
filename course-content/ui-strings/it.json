@@ -48,6 +48,7 @@
   "voiceReplies": "Risposte vocali",
   "voice": "Voce",
   "voiceUnavailable": "Nessuna voce di riserva del browser trovata per questa lingua.",
+  "lowCertainty": "Non del tutto sicura — prova a riformulare la domanda",
   "qaTitle": "Domande",
   "askPrompt": "Alza la mano e chiedi per testo o voce.",
   "knowledgeCheck": "Verifica",

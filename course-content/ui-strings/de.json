@@ -48,6 +48,7 @@
   "voiceReplies": "Sprachantworten",
   "voice": "Stimme",
   "voiceUnavailable": "Für diese Sprache ist keine Browser-Ausweichstimme verfügbar.",
+  "lowCertainty": "Nicht ganz sicher — formuliere die Frage gern anders",
   "qaTitle": "Fragen",
   "askPrompt": "Melde dich und frag per Text oder Sprache.",
   "knowledgeCheck": "Wissenscheck",

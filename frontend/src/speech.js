@@ -68,9 +68,20 @@ export async function pickVoice(lang, gender) {
   return scored[0].s >= 6 ? scored[0].v : null;
 }
 
-export async function pickVoiceName(lang, gender) {
-  const v = await pickVoice(lang, gender);
-  return v ? v.name : null;
+// Distinguishes WHY there's no name yet, unlike pickVoiceName's old plain
+// string ('' meant both "still resolving" and "genuinely no match" — SS-23):
+//  - 'pending': the browser's voice list hasn't actually loaded yet (still
+//    empty even after loadVoices()'s wait) — we don't know yet, so callers
+//    must not claim "no fallback voice" off this.
+//  - 'ready': the list loaded and a matching voice was found.
+//  - 'none': the list REALLY loaded (a non-empty array) and nothing in it
+//    matches this language — only now is "no fallback voice" a true claim.
+export async function pickVoiceInfo(lang, gender) {
+  const voices = await loadVoices();
+  if (!voices.length) return { status: 'pending', name: '' };
+  const prefix = langTag(lang).toLowerCase();
+  const scored = voices.map((v) => ({ v, s: rank(v, prefix, gender) })).sort((a, b) => b.s - a.s);
+  return scored[0].s >= 6 ? { status: 'ready', name: scored[0].v.name } : { status: 'none', name: '' };
 }
 
 // Speak text with natural pacing. onBoundary(charIndex) fires as words are

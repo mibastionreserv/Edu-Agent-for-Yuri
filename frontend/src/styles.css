@@ -154,6 +154,7 @@ input{font-family:inherit}
 .bubble.a.off{background:rgba(255,203,71,.1);border-color:rgba(255,203,71,.35);color:#f4e2b0}
 .bubble.a.errb{background:rgba(255,106,85,.12);border-color:rgba(255,106,85,.4);color:#ffcabf}
 .bubble .src{display:block;margin-top:6px;font-family:monospace;font-size:10.5px;color:var(--teal)}
+.bubble .src.low-certainty{color:#f4e2b0;font-family:inherit}
 .ask{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:12px}
 .mode{display:flex;gap:4px;background:rgba(0,0,0,.25);padding:3px;border-radius:9px;margin-bottom:10px;width:fit-content}
 .mode button{background:none;border:0;color:var(--muted-2);font-size:12px;padding:7px 12px;border-radius:7px}

@@ -76,8 +76,11 @@ export async function getAnswer({ question, lang, module, history = [], avatarId
     // topicality is borrowed from the local classifier (not hardcoded 'on')
     // so the frontend's m.topicality filter/styling reflects reality instead
     // of treating every LLM answer, including off-topic ones, as on-topic.
+    // No local-style confidence score exists for an LLM answer, so certainty
+    // defaults to 'high' (SS-22) — a fluent, coherent completion doesn't hedge
+    // the way a weak keyword-retrieval match does.
     return {
-      topicality: local.topicality, answer: text, intent: local.intent, provider: 'llm',
+      topicality: local.topicality, answer: text, intent: local.intent, provider: 'llm', certainty: 'high',
     };
   } catch (err) {
     console.error(`[llm] falling back to local: ${err && err.message}`);

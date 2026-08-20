@@ -169,3 +169,110 @@ describe('ranking is order-independent (SS-17 regression guard)', () => {
     });
   }
 });
+
+// SS-21: the compare branch used to gate on `score > 0` instead of the same
+// CHUNK_RELEVANCE_THRESHOLD as the main path, so almost any "compare"-shaped
+// question was answered "on topic" even when the module doesn't cover the
+// named subjects at all — and when it did resolve, the two halves could
+// silently duplicate (same chunk/sentence picked twice) with a hardcoded
+// confidence:0.6 regardless of how weak the match actually was.
+describe('compare-intent questions respect the topicality gate (SS-21)', () => {
+  it('does not let a comparison bypass the gate: neither subject is covered by this module', () => {
+    const chunks = loadModule('m1-roles', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'What is the difference between Sprint Review and Sprint Retrospective?',
+      lang: 'en',
+      chunks,
+    });
+    expect(res.topicality).toBe('off');
+    expect(res.source).toBeNull();
+    expect(res.sources).toEqual([]);
+  });
+
+  it('answers a "differ from" phrased comparison with two distinct, non-duplicated sources', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'How does the Daily Scrum differ from the Sprint Retrospective?',
+      lang: 'en',
+      chunks,
+    });
+    expect(res.topicality).toBe('on');
+    expect(res.intent).toBe('compare');
+    expect(res.sources.length).toBe(2);
+    expect(new Set(res.sources).size).toBe(2);
+    expect(res.answer.toLowerCase()).toContain('daily');
+    expect(res.answer.toLowerCase()).toContain('retrospective');
+  });
+
+  it('still composes a comparison from two concepts (existing behavior unchanged)', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'What is the difference between the Sprint Review and the Sprint Retrospective?',
+      lang: 'en',
+      chunks,
+    });
+    expect(res.topicality).toBe('on');
+    expect(res.intent).toBe('compare');
+    expect(res.sources.length).toBe(2);
+    expect(res.answer.toLowerCase()).toContain('review');
+    expect(res.answer.toLowerCase()).toContain('retrospective');
+  });
+
+  // Regression guard: the hardcoded confidence:0.6 and duplicated-source bug
+  // must not resurface across a small set of genuine compare questions.
+  it('never returns the old hardcoded confidence:0.6 or duplicated sources for a compare answer', () => {
+    const cases = [
+      { mod: 'm2-events', lang: 'en', q: 'What is the difference between the Sprint Review and the Sprint Retrospective?' },
+      { mod: 'm2-events', lang: 'en', q: 'How does the Daily Scrum differ from the Sprint Retrospective?' },
+      { mod: 'm1-roles', lang: 'en', q: 'What is the difference between the Product Owner and the Scrum Master?' },
+      { mod: 'm3-metrics', lang: 'en', q: 'What is the difference between Lead Time and Cycle Time?' },
+    ];
+    for (const { mod, lang, q } of cases) {
+      const chunks = loadModule(mod, lang).knowledgeChunks;
+      const res = answerQuestion({ question: q, lang, chunks });
+      if (res.intent === 'compare' && res.topicality === 'on') {
+        expect(res.confidence).not.toBe(0.6);
+        expect(new Set(res.sources).size).toBe(res.sources.length);
+      }
+    }
+  });
+});
+
+// SS-22: confidence is computed but was never exposed as anything a caller
+// could act on — a near-zero-confidence answer looked exactly as assertive
+// as a well-grounded one, and the "off" branch didn't even return the field.
+describe('certainty is derived from confidence and set on every branch (SS-22)', () => {
+  it('sets certainty on the off-topic branch', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({ question: 'What is the weather tomorrow?', lang: 'en', chunks });
+    expect(res.topicality).toBe('off');
+    expect(res.certainty).toBe('low');
+  });
+
+  it('a strong, well-grounded on-topic answer is certainty:"high"', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const goodQuestions = [
+      'How long is the Daily Scrum?',
+      'What is the Sprint Review?',
+      'What is the Sprint Retrospective?',
+    ];
+    for (const q of goodQuestions) {
+      const res = answerQuestion({ question: q, lang: 'en', chunks });
+      expect(res.topicality).toBe('on');
+      expect(res.certainty).toBe('high');
+    }
+  });
+
+  it('a weak/ambiguous on-topic match is downgraded to certainty:"low" and hedged', () => {
+    // A minimal, deliberately ambiguous corpus: two headings share almost
+    // all of their vocabulary, so neither one wins by a clear margin.
+    const chunks = [
+      { title: 'Sprint Planning', text: 'Sprint Planning starts the Sprint and sets the Sprint Goal for the team.' },
+      { title: 'Sprint Review', text: 'Sprint Review happens near the end of the Sprint for the team and Goal.' },
+    ];
+    const res = answerQuestion({ question: 'Tell me about the Sprint and the Goal for the team.', lang: 'en', chunks });
+    expect(res.topicality).toBe('on');
+    expect(res.certainty).toBe('low');
+    expect(res.confidence).toBeLessThan(0.15);
+  });
+});
