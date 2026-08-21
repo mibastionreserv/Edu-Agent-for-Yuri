@@ -76,7 +76,14 @@ const DEFAULT_TTS_VOICE = 'Gacrux';
 // fallback (speech.js pickVoice) toward a voice that at least matches, so a
 // fallback for Daniel and one for Mei-Lin don't both collapse onto the same
 // system voice (SS-12).
-const PERSONA_GENDER = { mira: 'female', daniel: 'male', meilin: 'female' };
+// yuri/amara: Tavus does its own TTS (see PERSONA_TTS_VOICE above), but this
+// map is also consulted by the Web Speech fallback used if the Tavus
+// connection itself fails (see isTavus branch in speakWithMouth) — without
+// an entry here that fallback silently defaulted to 'female' for Yuri, the
+// male persona (SS-34).
+const PERSONA_GENDER = {
+  mira: 'female', daniel: 'male', meilin: 'female', yuri: 'male', amara: 'male',
+};
 
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it

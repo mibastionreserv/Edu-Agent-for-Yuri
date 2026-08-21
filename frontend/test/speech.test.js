@@ -49,6 +49,74 @@ describe('pickVoice gender-aware fallback (SS-12)', () => {
   });
 });
 
+// SS-34: a "quality" bonus (e.g. +5 for a name matching /google/) used to be
+// summed straight into the same score as the gender bonus/penalty, so it
+// could outweigh a gender mismatch entirely. "Google US English" — Chrome/
+// Windows' single most common default voice — has no male/female marker in
+// its own name, so it scored the same regardless of the requested gender and
+// both a male and a female persona fell back onto the exact same voice.
+describe('pickVoice gender is a hard filter, not an additive score (SS-34)', () => {
+  let originalSynthesis;
+
+  beforeEach(() => { originalSynthesis = window.speechSynthesis; });
+  afterEach(() => { window.speechSynthesis = originalSynthesis; });
+
+  it('a realistic Chrome/Windows voice list ("Google US English" + Zira + David) resolves male and female personas to DIFFERENT voices', async () => {
+    const voices = [
+      makeVoice('Google US English', 'en-US'),
+      makeVoice('Microsoft Zira - English (United States)', 'en-US'),
+      makeVoice('Microsoft David - English (United States)', 'en-US'),
+    ];
+    window.speechSynthesis = { getVoices: () => voices };
+
+    const male = await pickVoice('en', 'male');
+    const female = await pickVoice('en', 'female');
+
+    expect(male).toBeTruthy();
+    expect(female).toBeTruthy();
+    expect(male.name).not.toBe(female.name);
+    // Specifically: "Google US English" (unlabeled, quality-bonus voice)
+    // must not be handed to the male persona just because of that bonus —
+    // it is classified female and a real male-named voice is available.
+    expect(male.name).not.toMatch(/google us english/i);
+  });
+
+  it('a "Google UK English Male" / "Google UK English Female" pair resolves each persona to its own matching voice', async () => {
+    const voices = [
+      makeVoice('Google UK English Male', 'en-GB'),
+      makeVoice('Google UK English Female', 'en-GB'),
+    ];
+    window.speechSynthesis = { getVoices: () => voices };
+
+    const male = await pickVoice('en', 'male');
+    const female = await pickVoice('en', 'female');
+
+    expect(male.name).toMatch(/male/i);
+    expect(male.name).not.toMatch(/female/i);
+    expect(female.name).toMatch(/female/i);
+  });
+
+  it('when only opposite-gender voices are installed, returns null instead of speaking with the wrong voice', async () => {
+    const voices = [
+      makeVoice('Google US English', 'en-US'),
+      makeVoice('Microsoft Zira - English (United States)', 'en-US'),
+    ];
+    window.speechSynthesis = { getVoices: () => voices };
+
+    const voice = await pickVoice('en', 'male');
+    expect(voice).toBeFalsy();
+  });
+
+  it('pickVoiceInfo reports "none" (not a wrong-gender voice) for the same female-only voice list', async () => {
+    const voices = [makeVoice('Microsoft Zira - English (United States)', 'en-US')];
+    window.speechSynthesis = { getVoices: () => voices };
+
+    const info = await pickVoiceInfo('en', 'male');
+    expect(info.status).toBe('none');
+    expect(info.name).toBe('');
+  });
+});
+
 // SS-23: voiceName used to be a plain string where '' meant both "still
 // resolving" and "genuinely no match", so the UI could show a fallback
 // placeholder AND "no fallback voice found" at the same time. pickVoiceInfo

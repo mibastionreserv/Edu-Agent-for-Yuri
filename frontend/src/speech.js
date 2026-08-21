@@ -27,25 +27,40 @@ function loadVoices() {
 const GOOD = [/natural/i, /neural/i, /wavenet/i, /studio/i, /premium/i, /enhanced/i, /siri/i, /google/i];
 const BAD = [/compact/i, /espeak/i, /robot/i];
 
-// Minimal, not exhaustive: common voice names shipped by Windows/macOS/
-// Chrome speechSynthesis. Good enough to stop two personas of different
-// genders from both falling back to the same system voice (SS-12) — not
-// meant to be a complete gender classifier for every locale.
-const MALE_NAME = /\b(david|guy|mark|daniel|thomas|male|george|james|alex)\b/i;
-const FEMALE_NAME = /\b(zira|susan|female|samantha|victoria|karen|hazel|catherine|eva|anna)\b/i;
+// Common voice names shipped by Windows/macOS/Chrome/Edge speechSynthesis.
+// Not exhaustive, but covers the voices actually seen in the wild — enough
+// to stop two personas of different genders from both falling back to the
+// same system voice (SS-12), including "Google US English" (Chrome/Windows'
+// most common default, unlabeled by itself — SS-34) and Edge's natural
+// voices. The bare "male"/"female" words also catch "Google UK English
+// Male/Female" and similar self-labeled voice names.
+const MALE_NAME = /\b(david|guy|mark|daniel|thomas|male|george|james|alex|andrew|brian|christopher|eric|roger|steffan|fred|tom)\b/i;
+const FEMALE_NAME = /\b(zira|susan|female|samantha|victoria|karen|hazel|catherine|eva|anna|ava|emma|jenny|michelle|aria|ana|sara|moira|tessa|google us english)\b/i;
 
-function genderScore(name, gender) {
-  if (!gender) return 0;
-  const isMale = MALE_NAME.test(name);
-  const isFemale = FEMALE_NAME.test(name);
-  if (gender === 'male' && isMale) return 4;
-  if (gender === 'female' && isFemale) return 4;
-  if (gender === 'male' && isFemale) return -4;
-  if (gender === 'female' && isMale) return -4;
-  return 0;
+function voiceGender(name) {
+  if (MALE_NAME.test(name)) return 'male';
+  if (FEMALE_NAME.test(name)) return 'female';
+  return null;
 }
 
-function rank(voice, prefix, gender) {
+// Gender is a hard filter + sort tier, never a scalar folded into the same
+// sum as language/quality (SS-34): a "quality" bonus (e.g. +5 for a
+// "google"-named voice) must never be able to outweigh a gender mismatch,
+// which a single additive score allowed — that's exactly how a male persona
+// used to end up speaking with "Google US English" over a real male voice.
+// Tier 0 = voice's detected gender matches the requested one.
+// Tier 1 = voice's gender could not be determined from its name (neutral).
+// Opposite-gender voices are dropped as candidates entirely, not just
+// down-ranked.
+function genderTier(name, gender) {
+  if (!gender) return 0;
+  const g = voiceGender(name);
+  if (g === gender) return 0;
+  if (g === null) return 1;
+  return 2;
+}
+
+function qualityScore(voice, prefix) {
   let s = 0;
   const name = `${voice.name} ${voice.voiceURI || ''}`;
   const vlang = (voice.lang || '').toLowerCase().replace('_', '-');
@@ -54,18 +69,37 @@ function rank(voice, prefix, gender) {
   if (GOOD.some((re) => re.test(name))) s += 5;
   if (BAD.some((re) => re.test(name))) s -= 6;
   if (voice.localService === false) s += 1;
-  s += genderScore(name, gender);
   return s;
 }
 
-export async function pickVoice(lang, gender) {
+function rankCandidates(voices, prefix, gender) {
+  return voices
+    .map((v) => ({ v, tier: genderTier(`${v.name} ${v.voiceURI || ''}`, gender), s: qualityScore(v, prefix) }))
+    .filter((c) => c.tier < 2)
+    .sort((a, b) => (a.tier - b.tier) || (b.s - a.s));
+}
+
+// Resolves the picked voice plus WHY there wasn't one, so speak() can tell
+// "this language just has no installed voice at all" (pre-existing,
+// harmless to hand to the browser's own lang-tag default) apart from "a
+// voice for this language exists, but only in the opposite gender" — the
+// latter (`blocked`) must never fall through to the browser default, since
+// that default is exactly the wrong-gender voice being excluded (SS-34).
+async function resolveVoice(lang, gender) {
   const voices = await loadVoices();
-  if (!voices.length) return null;
+  if (!voices.length) return { voice: null, blocked: false, pending: true };
   const prefix = langTag(lang).toLowerCase();
-  const scored = voices.map((v) => ({ v, s: rank(v, prefix, gender) })).sort((a, b) => b.s - a.s);
-  // Only return a voice that at least shares the language family, else null so
-  // the browser default (which may not match) is not misused.
-  return scored[0].s >= 6 ? scored[0].v : null;
+  const scored = rankCandidates(voices, prefix, gender);
+  if (scored.length && scored[0].s >= 6) return { voice: scored[0].v, blocked: false, pending: false };
+  const blocked = Boolean(gender) && voices.some((v) => qualityScore(v, prefix) >= 6);
+  return { voice: null, blocked, pending: false };
+}
+
+export async function pickVoice(lang, gender) {
+  // Only returns a voice that at least shares the language family, else null
+  // so the browser default (which may not match) is not misused.
+  const { voice } = await resolveVoice(lang, gender);
+  return voice;
 }
 
 // Distinguishes WHY there's no name yet, unlike pickVoiceName's old plain
@@ -77,11 +111,9 @@ export async function pickVoice(lang, gender) {
 //  - 'none': the list REALLY loaded (a non-empty array) and nothing in it
 //    matches this language — only now is "no fallback voice" a true claim.
 export async function pickVoiceInfo(lang, gender) {
-  const voices = await loadVoices();
-  if (!voices.length) return { status: 'pending', name: '' };
-  const prefix = langTag(lang).toLowerCase();
-  const scored = voices.map((v) => ({ v, s: rank(v, prefix, gender) })).sort((a, b) => b.s - a.s);
-  return scored[0].s >= 6 ? { status: 'ready', name: scored[0].v.name } : { status: 'none', name: '' };
+  const { voice, pending } = await resolveVoice(lang, gender);
+  if (pending) return { status: 'pending', name: '' };
+  return voice ? { status: 'ready', name: voice.name } : { status: 'none', name: '' };
 }
 
 // Speak text with natural pacing. onBoundary(charIndex) fires as words are
@@ -90,7 +122,13 @@ export async function speak(text, lang, {
   onStart, onEnd, onError, onBoundary, gender,
 } = {}) {
   if (!speechSupported() || !text) { if (onEnd) onEnd(); return () => {}; }
-  const voice = await pickVoice(lang, gender);
+  const { voice, blocked } = await resolveVoice(lang, gender);
+  // A voice for this persona's gender genuinely doesn't exist among the
+  // installed voices — stay silent rather than speak the line in the
+  // opposite gender's voice (SS-34). The caller's voiceInfo (pickVoiceInfo,
+  // status 'none') already surfaces this to the UI; the text itself stays
+  // visible, it's just not read aloud.
+  if (blocked) { if (onEnd) onEnd(); return () => {}; }
   const u = new SpeechSynthesisUtterance(text);
   u.lang = langTag(lang);
   if (voice) u.voice = voice;
