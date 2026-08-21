@@ -42,6 +42,11 @@ const SimliAvatar = forwardRef(function SimliAvatar({
 
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  // Outcome of the most recent settle() — read back by a second start() call
+  // on an already-connected/settled client (see below). A ref, not `status`,
+  // because useImperativeHandle's factory below closes over the render it
+  // was created in ([] deps) and would otherwise see a stale value.
+  const lastOkRef = useRef(false);
 
   function clearTimers() {
     timersRef.current.forEach((t) => clearInterval(t) || clearTimeout(t));
@@ -51,6 +56,7 @@ const SimliAvatar = forwardRef(function SimliAvatar({
   function settle(ok, message) {
     if (settledRef.current) return;
     settledRef.current = true;
+    lastOkRef.current = ok;
     clearTimers();
     if (ok) {
       setStatus('live');
@@ -95,7 +101,19 @@ const SimliAvatar = forwardRef(function SimliAvatar({
     // audioEl: the <audio> element playing our narration. Simli reads its
     // samples for lip-sync and relays the voice back on its own audio track.
     async start(audioEl) {
-      if (clientRef.current) return;
+      if (clientRef.current) {
+        // Idempotent: a caller may call start() again on an already
+        // connected/settled client — e.g. App.jsx resets its own "attempted
+        // once" latch on a module/lang change without this component
+        // remounting. If we silently returned here without replaying the
+        // outcome, a caller awaiting a freshly-built readiness promise (built
+        // on the assumption onReady WILL fire again) would hang forever
+        // (SS-33). Only replay if the earlier start() has itself already
+        // settled — an in-flight connection will still call the (always
+        // current) onReadyRef.current itself once it does.
+        if (settledRef.current && onReadyRef.current) onReadyRef.current(lastOkRef.current);
+        return;
+      }
       settledRef.current = false;
       unmountedRef.current = false;
       setStatus('connecting');

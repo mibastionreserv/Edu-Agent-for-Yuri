@@ -218,6 +218,12 @@ export function Classroom({
   // decide whether narration still needs to wait (and show the blocking
   // loader) or can start instantly against the already-connected avatar.
   const simliUpRef = useRef(false);
+  // True once Simli's onReady has fired at all (success OR failure) — the
+  // latch that stops the blocking loader from reappearing on every later
+  // line once the connection's outcome is already known. Symmetric to
+  // photoTtsWarmedRef for photo personas, whose "warmed" latch never
+  // un-warms after a failed line either (SS-33).
+  const simliSettledRef = useRef(false);
   const recognitionRef = useRef(null);
   const voiceModeRef = useRef(false);
 
@@ -284,6 +290,7 @@ export function Classroom({
       simliConnectReadyRef.current = null;
       simliAttemptedRef.current = false;
       simliUpRef.current = false;
+      simliSettledRef.current = false;
       tavusReadyRef.current = null;
       // tavusStoppedResolveRef is NOT reset here: stopAll() above already
       // resolves and nulls it (via stopSpeechRef.current()) whenever a Tavus
@@ -607,7 +614,11 @@ export function Classroom({
     // being synthesized, so the learner never watches a silent, motionless
     // (or worse, twitching) photo waiting for audio.
     const photoOverlay = !simliFaceId && !photoTtsWarmedRef.current;
-    const showOverlay = (Boolean(simliFaceId) && !simliUpRef.current) || photoOverlay;
+    // Once Simli's outcome is known (simliSettledRef), don't raise the
+    // blocking loader again on later lines just because it never reached
+    // 'live' — a permanently failed connection must not re-block every
+    // subsequent line for the rest of the lesson (SS-33).
+    const showOverlay = (Boolean(simliFaceId) && !simliUpRef.current && !simliSettledRef.current) || photoOverlay;
     if (showOverlay) setAvatarConnecting(true);
     // No separate race/timeout here — SimliAvatar's own CONNECT_TIMEOUT_MS is
     // the single timeout for this handshake (SS-1: duplicate timeouts caused
@@ -711,7 +722,14 @@ export function Classroom({
       // The onReady callback (SimliAvatar prop, above) is the single owner
       // of el.muted and of tearing the connection down on failure — this
       // just reacts to the same resolved value for local bookkeeping.
-      const ok = await simliPromise;
+      // A hard upper bound on top of SimliAvatar's own CONNECT_TIMEOUT_MS:
+      // if simliPromise never settles at all (e.g. a start()/onReady defect
+      // — see SS-33), this line must still get spoken instead of hanging
+      // forever behind the loader.
+      const ok = await Promise.race([
+        simliPromise,
+        new Promise((resolve) => { setTimeout(() => resolve(false), 3000); }),
+      ]);
       if (showOverlay) setAvatarConnecting(false);
       if (ok) simliUpRef.current = true;
       else setSimliFailed(true);
@@ -1138,6 +1156,7 @@ export function Classroom({
                   posterSrc={`/content/avatars/${avatarId}.jpg`}
                   onReady={(ok) => {
                     simliUpRef.current = ok;
+                    simliSettledRef.current = true;
                     const el = narrationAudioRef.current;
                     if (ok) {
                       // Symmetric to the failure branch below: Simli's onReady
