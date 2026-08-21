@@ -1104,7 +1104,10 @@ export function Classroom({
   if (!mod || mod.segments.length === 0) return <div className="room"><div className="state">{ui.empty}</div></div>;
 
   const isLast = seg >= mod.segments.length - 1;
-  const avatarState = handUp && !speaking ? 'listening' : (thinking ? 'listening' : 'idle');
+  // "Listening" must track the mic actually being open (voiceMode), not just
+  // a raised hand — handUp stays true well after an answer has finished
+  // playing, which previously left the badge stuck on "Listening".
+  const avatarState = thinking ? 'listening' : (voiceMode && !speaking ? 'listening' : 'idle');
 
   return (
     <div className="room">
@@ -1205,7 +1208,7 @@ export function Classroom({
                 <Avatar id={avatarId} mouth={mouth} state={avatarState} size={150} />
               )}
               <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
-                {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
+                {thinking ? ui.thinking : (speaking ? ui.speaking : (voiceMode ? ui.listening : presenterName))}
               </div>
               {/* Hidden player for server-synthesized speech — for Simli
                   personas its Web Audio routing feeds the live avatar's
