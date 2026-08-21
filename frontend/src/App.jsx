@@ -503,7 +503,7 @@ export function Classroom({
     if (loading || !mod || isTavus || !canAttemptTts()) return;
     const probe = ui.resumeAfterQuestion || 'Let us continue.';
     let alive = true;
-    fetchTtsAudio(probe, ttsVoice)
+    fetchTtsAudio(probe, ttsVoice, { languageCode: langTag(lang), gender: personaGender.toUpperCase() })
       .then(() => { if (alive) noteTtsSuccess(); })
       .catch((e) => { if (alive) noteTtsFailure(e); });
     return () => { alive = false; };
@@ -632,9 +632,10 @@ export function Classroom({
     // a "failed" result to land over a connection that was still live).
     const simliPromise = simliFaceId ? ensureLiveAvatarFromElement(el) : null;
 
+    const ttsLangGender = { languageCode: langTag(lang), gender: personaGender.toUpperCase() };
     let blob = null;
     try {
-      blob = await fetchTtsAudio(text, ttsVoice);
+      blob = await fetchTtsAudio(text, ttsVoice, ttsLangGender);
     } catch (firstErr) {
       // A rate-limit or auth/config failure opens the circuit (bounded
       // backoff for 429, the whole session for a real permanent failure —
@@ -660,7 +661,7 @@ export function Classroom({
         return true; // stale — a newer line took over; drop silently
       }
       try {
-        blob = await fetchTtsAudio(text, ttsVoice);
+        blob = await fetchTtsAudio(text, ttsVoice, ttsLangGender);
       } catch (secondErr) {
         noteTtsFailure(secondErr);
         photoTtsWarmedRef.current = true; // don't re-show the loader per line

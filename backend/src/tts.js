@@ -15,12 +15,17 @@
 // browser's Web Speech API, so narration itself never breaks.
 
 import { createHash } from 'node:crypto';
+import { synthesizeSpeechGoogleCloud } from './googleCloudTts.js';
 
 // Lesson narration is FIXED content: the same paragraphs are synthesized
 // over and over, for every learner and every replay. Caching by
-// hash(text + voice + model) collapses that to one Gemini call per distinct
-// line, ever - the single biggest lever against the 429 quota errors that
-// took TTS down.
+// hash(provider + text + voice + model) collapses that to one upstream call
+// per distinct line, ever - the single biggest lever against the 429 quota
+// errors that took TTS down.
+//
+// `provider` is part of the hash (not just model) so the Google Cloud TTS
+// and Gemini caches never collide/overwrite each other, even for identical
+// text: they return different binary formats and different voices.
 //
 // Stored in Postgres, NOT on local disk: Render's instance filesystem is
 // ephemeral, so a disk cache is wiped on every redeploy and restart and
@@ -29,8 +34,8 @@ import { createHash } from 'node:crypto';
 const memCache = new Map();
 const MEM_MAX = 120;
 
-function cacheKey(text, voice, model) {
-  return createHash('sha256').update(`${model} ${voice} ${text}`).digest('hex');
+function cacheKey(provider, text, voice, model) {
+  return createHash('sha256').update(`${provider} ${model} ${voice} ${text}`).digest('hex');
 }
 
 function memPut(key, buf) {
@@ -90,6 +95,37 @@ function pcmToWav(pcm, { sampleRate = 24000, channels = 1, bitDepth = 16 } = {})
 
 // Returns a WAV Buffer, or throws. Callers should catch and fall back.
 //
+// `languageCode`/`gender` are optional and only drive the Google Cloud TTS
+// attempt below — old callers that don't pass them (or a fresh deploy before
+// GOOGLE_TTS_CREDENTIALS is set on Render) skip straight to the Gemini path,
+// so behavior is unchanged until both the code AND the credentials are in
+// place.
+export async function synthesizeSpeech(text, {
+  voice = 'Gacrux', pool = null, languageCode = null, gender = null,
+} = {}) {
+  // Google Cloud TTS first: a mature GA product with a real gender parameter
+  // and a generous free quota, unlike the preview Gemini model below. Only
+  // attempted when the caller supplies both languageCode and gender (the
+  // frontend does, once updated) — any failure (not configured, no voice for
+  // this language+gender, network, timeout) falls through to the existing
+  // Gemini path untouched.
+  if (languageCode && gender) {
+    const googleVoiceKey = `${languageCode}:${String(gender).toUpperCase()}`;
+    const googleKey = cacheKey('google', text, googleVoiceKey, 'google-cloud-tts');
+    const cachedGoogle = await cacheGet(pool, googleKey);
+    if (cachedGoogle) return cachedGoogle;
+    try {
+      const wav = await synthesizeSpeechGoogleCloud(text, { languageCode, gender, pool });
+      await cacheSet(pool, googleKey, wav);
+      return wav;
+    } catch (err) {
+      console.error('[tts] Google Cloud TTS failed, falling back to Gemini:', err.message);
+    }
+  }
+
+  return synthesizeSpeechGemini(text, { voice, pool });
+}
+
 // Uses the legacy generateContent API surface (v1beta/models/{model}:generateContent),
 // not the newer Interactions API — this is the older, more established surface and
 // its request/response shape is exactly what's documented at
@@ -97,13 +133,13 @@ function pcmToWav(pcm, { sampleRate = 24000, channels = 1, bitDepth = 16 } = {})
 // (An earlier version of this file called the Interactions API's /v1beta/interactions
 // endpoint with a guessed request body; that shape was never confirmed against the
 // real docs and is the most likely reason every call was failing.)
-export async function synthesizeSpeech(text, { voice = 'Gacrux', pool = null } = {}) {
+async function synthesizeSpeechGemini(text, { voice = 'Gacrux', pool = null } = {}) {
   const apiKey = process.env.GEMINI_TTS_API_KEY || process.env.LLM_API_KEY;
   if (!apiKey) throw new Error('TTS is not configured.');
   const model = process.env.GEMINI_TTS_MODEL || 'gemini-2.5-flash-preview-tts';
 
   // Serve from cache before spending any quota.
-  const key = cacheKey(text, voice, model);
+  const key = cacheKey('gemini', text, voice, model);
   const cached = await cacheGet(pool, key);
   if (cached) return cached;
 

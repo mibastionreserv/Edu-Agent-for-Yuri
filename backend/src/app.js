@@ -262,18 +262,27 @@ export function createApp(pool) {
   });
 
   // --- Server-side TTS: gives the live Simli avatar real audio to lip-sync
-  // to (segment narration, the raise-hand prompt, Q&A answers). Reuses the
-  // Gemini key already configured for LLM_API_KEY — no new signup needed.
-  // Personas without a Simli face keep using the browser's Web Speech API and
-  // never call this; if it fails for any reason, the frontend falls back to
-  // Web Speech API too, so narration itself is never at risk.
+  // to (segment narration, the raise-hand prompt, Q&A answers). Tries Google
+  // Cloud TTS first (when languageCode/gender are supplied and
+  // GOOGLE_TTS_CREDENTIALS is configured), falling back to the Gemini key
+  // already configured for LLM_API_KEY — see tts.js. Personas without a
+  // Simli face keep using the browser's Web Speech API and never call this;
+  // if it fails for any reason, the frontend falls back to Web Speech API
+  // too, so narration itself is never at risk.
   app.post('/api/tts', requireAuth, async (req, res) => {
-    const { text, voice } = req.body || {};
+    const {
+      text, voice, languageCode, gender,
+    } = req.body || {};
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ error: 'text is required.' });
     }
     try {
-      const wav = await synthesizeSpeech(text.trim(), { voice: voice || undefined, pool });
+      const wav = await synthesizeSpeech(text.trim(), {
+        voice: voice || undefined,
+        languageCode: languageCode || undefined,
+        gender: gender || undefined,
+        pool,
+      });
       res.set('Content-Type', 'audio/wav');
       // Narration for a given line never changes, so let the browser keep it
       // too — a re-listen or a back-and-forth between segments then costs no

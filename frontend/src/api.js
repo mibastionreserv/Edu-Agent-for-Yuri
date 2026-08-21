@@ -61,7 +61,10 @@ export const api = {
 // Server-generated speech audio (WAV, binary) — bypasses the JSON-only
 // request() helper above. Throws on any non-2xx response so callers can fall
 // back to the browser's own Web Speech API.
-export async function fetchTtsAudio(text, voice) {
+// languageCode/gender are optional and only feed the backend's Google Cloud
+// TTS attempt (see backend/src/tts.js) — omitting them just skips straight
+// to the Gemini fallback, so older callers keep working unchanged.
+export async function fetchTtsAudio(text, voice, { languageCode, gender } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -70,7 +73,9 @@ export async function fetchTtsAudio(text, voice) {
     res = await fetch('/api/tts', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ text, voice }),
+      body: JSON.stringify({
+        text, voice, languageCode, gender,
+      }),
       // A hung TTS call used to leave narration silently stuck forever —
       // fail loudly instead so the caller's fallback path (Web Speech) runs.
       signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
