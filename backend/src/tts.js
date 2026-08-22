@@ -93,7 +93,13 @@ function pcmToWav(pcm, { sampleRate = 24000, channels = 1, bitDepth = 16 } = {})
   return Buffer.concat([header, pcm]);
 }
 
-// Returns a WAV Buffer, or throws. Callers should catch and fall back.
+// Returns { wav: Buffer, provider: 'google'|'gemini' }, or throws. Callers
+// should catch and fall back. `provider` on the return value is what let a
+// caller (the /api/tts route) tell a caller/QA-agent "this actually came
+// from Google Cloud" apart from "silently fell back to Gemini" — before this
+// there was no way to distinguish the two from outside the process, which
+// made the GOOGLE_TTS_CREDENTIALS rollout unverifiable short of reading
+// server logs.
 //
 // `languageCode`/`gender` are optional and only drive the Google Cloud TTS
 // attempt below — old callers that don't pass them (or a fresh deploy before
@@ -113,17 +119,18 @@ export async function synthesizeSpeech(text, {
     const googleVoiceKey = `${languageCode}:${String(gender).toUpperCase()}`;
     const googleKey = cacheKey('google', text, googleVoiceKey, 'google-cloud-tts');
     const cachedGoogle = await cacheGet(pool, googleKey);
-    if (cachedGoogle) return cachedGoogle;
+    if (cachedGoogle) return { wav: cachedGoogle, provider: 'google' };
     try {
       const wav = await synthesizeSpeechGoogleCloud(text, { languageCode, gender, pool });
       await cacheSet(pool, googleKey, wav);
-      return wav;
+      return { wav, provider: 'google' };
     } catch (err) {
       console.error('[tts] Google Cloud TTS failed, falling back to Gemini:', err.message);
     }
   }
 
-  return synthesizeSpeechGemini(text, { voice, pool });
+  const wav = await synthesizeSpeechGemini(text, { voice, pool });
+  return { wav, provider: 'gemini' };
 }
 
 // Uses the legacy generateContent API surface (v1beta/models/{model}:generateContent),

@@ -277,7 +277,7 @@ export function createApp(pool) {
       return res.status(400).json({ error: 'text is required.' });
     }
     try {
-      const wav = await synthesizeSpeech(text.trim(), {
+      const { wav, provider } = await synthesizeSpeech(text.trim(), {
         voice: voice || undefined,
         languageCode: languageCode || undefined,
         gender: gender || undefined,
@@ -288,6 +288,11 @@ export function createApp(pool) {
       // too — a re-listen or a back-and-forth between segments then costs no
       // request at all, on top of the server-side cache.
       res.set('Cache-Control', 'private, max-age=86400');
+      // Lets a caller (or the deployer/QA agent, via curl/network inspector)
+      // confirm which provider actually spoke this line, instead of only
+      // being able to infer it indirectly (or not at all) from audio quality
+      // — see the comment on synthesizeSpeech's return value in tts.js.
+      res.set('X-TTS-Provider', provider);
       return res.send(wav);
     } catch (err) {
       const detail = (err && err.message) || 'unknown';

@@ -48,10 +48,11 @@ describe('synthesizeSpeech (SS-11 / SS-13)', () => {
       }],
     }));
 
-    const wav = await synthesizeSpeech('hello world, this line is unique enough to skip the cache', { pool: null });
+    const { wav, provider } = await synthesizeSpeech('hello world, this line is unique enough to skip the cache', { pool: null });
     expect(global.fetch).toHaveBeenCalledTimes(1);
     // WAV = 44-byte header + PCM payload.
     expect(wav.length).toBe(44 + 4);
+    expect(provider).toBe('gemini');
   });
 
   it('retries a 200 response with no audio part instead of failing immediately (SS-11)', async () => {
@@ -63,7 +64,7 @@ describe('synthesizeSpeech (SS-11 / SS-13)', () => {
         candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/pcm', data: AUDIO_B64 } }] } }],
       }));
 
-    const wav = await synthesizeSpeech('a second unique line for this test, no audio then audio', { pool: null });
+    const { wav } = await synthesizeSpeech('a second unique line for this test, no audio then audio', { pool: null });
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(wav.length).toBe(44 + 4);
   });
@@ -124,10 +125,11 @@ describe('synthesizeSpeech: Google Cloud TTS as primary provider, Gemini as fall
       candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/pcm', data: AUDIO_B64 } }] } }],
     }));
 
-    const wav = await synthesizeSpeech('an old-style call with no languageCode or gender at all', { pool: null });
+    const { wav, provider } = await synthesizeSpeech('an old-style call with no languageCode or gender at all', { pool: null });
     expect(synthesizeSpeechGoogleCloud).not.toHaveBeenCalled();
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(wav.length).toBe(44 + 4);
+    expect(provider).toBe('gemini');
   });
 
   it('with languageCode/gender, tries Google Cloud TTS first and falls back to Gemini on any failure', async () => {
@@ -136,7 +138,7 @@ describe('synthesizeSpeech: Google Cloud TTS as primary provider, Gemini as fall
       candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/pcm', data: AUDIO_B64 } }] } }],
     }));
 
-    const wav = await synthesizeSpeech('a line synthesized with languageCode and gender supplied', {
+    const { wav, provider } = await synthesizeSpeech('a line synthesized with languageCode and gender supplied', {
       pool: null, languageCode: 'en-US', gender: 'MALE',
     });
 
@@ -147,6 +149,7 @@ describe('synthesizeSpeech: Google Cloud TTS as primary provider, Gemini as fall
     );
     expect(global.fetch).toHaveBeenCalledTimes(1); // Gemini fallback ran
     expect(wav.length).toBe(44 + 4);
+    expect(provider).toBe('gemini'); // fell back — the caller must be told so
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       '[tts] Google Cloud TTS failed, falling back to Gemini:',
       'Google Cloud TTS is not configured.',
@@ -157,18 +160,20 @@ describe('synthesizeSpeech: Google Cloud TTS as primary provider, Gemini as fall
     const uniqueText = 'a cache-separation test line, unique across the whole suite';
 
     synthesizeSpeechGoogleCloud.mockResolvedValueOnce(Buffer.from('GOOGLE-AUDIO-BYTES'));
-    const googleWav = await synthesizeSpeech(uniqueText, {
+    const google = await synthesizeSpeech(uniqueText, {
       pool: null, languageCode: 'en-US', gender: 'MALE',
     });
-    expect(googleWav.toString()).toBe('GOOGLE-AUDIO-BYTES');
+    expect(google.wav.toString()).toBe('GOOGLE-AUDIO-BYTES');
+    expect(google.provider).toBe('google');
     expect(synthesizeSpeechGoogleCloud).toHaveBeenCalledTimes(1);
 
     // Same text/languageCode/gender again — must be served from the cache
     // entry Google's own call wrote, not re-invoke Google Cloud TTS.
-    const googleWavAgain = await synthesizeSpeech(uniqueText, {
+    const googleAgain = await synthesizeSpeech(uniqueText, {
       pool: null, languageCode: 'en-US', gender: 'MALE',
     });
-    expect(googleWavAgain.toString()).toBe('GOOGLE-AUDIO-BYTES');
+    expect(googleAgain.wav.toString()).toBe('GOOGLE-AUDIO-BYTES');
+    expect(googleAgain.provider).toBe('google'); // cache hit must still report the right provider
     expect(synthesizeSpeechGoogleCloud).toHaveBeenCalledTimes(1); // still 1 — cache hit
 
     // Same text, but the OLD call shape (no languageCode/gender): must go
@@ -177,8 +182,9 @@ describe('synthesizeSpeech: Google Cloud TTS as primary provider, Gemini as fall
     global.fetch = vi.fn().mockResolvedValue(jsonResponse({
       candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/pcm', data: AUDIO_B64 } }] } }],
     }));
-    const geminiWav = await synthesizeSpeech(uniqueText, { pool: null });
+    const gemini = await synthesizeSpeech(uniqueText, { pool: null });
     expect(global.fetch).toHaveBeenCalledTimes(1); // Gemini really ran — no false cache hit
-    expect(geminiWav.length).toBe(44 + 4); // Gemini's own WAV framing, not the raw Google bytes
+    expect(gemini.wav.length).toBe(44 + 4); // Gemini's own WAV framing, not the raw Google bytes
+    expect(gemini.provider).toBe('gemini');
   });
 });
