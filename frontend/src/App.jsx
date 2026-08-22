@@ -141,7 +141,7 @@ function revealedFromProgress(charIndex, textLen, nSteps) {
 // Q&A/presenter panel in isolation without driving the whole login/course
 // picker flow (SS-30/SS-31 regression tests).
 export function Classroom({
-  ui, lang, avatarId, course, moduleId, initialSegment, onExit, onSaved,
+  ui, lang, avatarId, course, moduleId, initialSegment, onExit, onSaved, onChangePresenter,
 }) {
   const [mod, setMod] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1121,6 +1121,9 @@ export function Classroom({
     <div className="room">
       <div className="topbar">
         <div className="crumb"><b>{course.title}</b><span>·</span><span className="mod">{mod.title}</span></div>
+        {onChangePresenter && (
+          <button className="ghost" onClick={onChangePresenter}>🎭 {ui.changePresenter}</button>
+        )}
         <button className="ghost" onClick={onExit}>← {ui.moduleList}</button>
       </div>
 
@@ -1320,13 +1323,18 @@ export function Classroom({
 }
 
 /* ---------------- course shell ---------------- */
-function CourseApp({ user, onLogout }) {
+export function CourseApp({ user, onLogout }) {
   const [lang, setLang] = useState('en');
   const [ui, setUi] = useState(null);
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [view, setView] = useState('welcome');
+  // Куда вернуться с экрана выбора презентера: 'modules' для первого запуска
+  // курса (существующее поведение), 'classroom' если учащийся открыл этот
+  // экран прямо из урока через "Change presenter" — тогда moduleId и
+  // initialSegment уже указывают на нужный урок/сегмент и трогать их не нужно.
+  const [avatarPickerOrigin, setAvatarPickerOrigin] = useState('modules');
   const [avatarId, setAvatarId] = useState('mira');
   const [moduleId, setModuleId] = useState(null);
   const [initialSegment, setInitialSegment] = useState(0);
@@ -1415,7 +1423,7 @@ function CourseApp({ user, onLogout }) {
             <p>{course.modules.length} {ui.moduleList.toLowerCase()} · {(course.supportedLanguages || []).join(' / ').toUpperCase()}</p>
             <div className="wsteps">{course.modules.map((m) => <span key={m.id} className="wstep">{m.title}</span>)}</div>
             <div className="wcta">
-              <button className="primary" onClick={() => setView('avatars')}>{ui.startCourse}</button>
+              <button className="primary" onClick={() => { setAvatarPickerOrigin('modules'); setView('avatars'); }}>{ui.startCourse}</button>
               {moduleId && <button className="ghost" onClick={() => setView('classroom')}>{ui.resume}</button>}
             </div>
           </div>
@@ -1429,7 +1437,11 @@ function CourseApp({ user, onLogout }) {
               card's right edge. */}
           <div className="sel-head">
             <h2>{ui.choosePresenter}</h2>
-            <button className="primary" onClick={() => setView('modules')}>{ui.continue}</button>
+            <button className="primary" onClick={() => {
+              const dest = avatarPickerOrigin;
+              setAvatarPickerOrigin('modules'); // сброс — защита от протухшего 'classroom'
+              setView(dest);
+            }}>{ui.continue}</button>
           </div>
           <div className="cards">
             {course.avatars.map((a) => (
@@ -1469,6 +1481,7 @@ function CourseApp({ user, onLogout }) {
           moduleId={moduleId} initialSegment={initialSegment}
           onExit={() => setView('modules')}
           onSaved={(nextSegment) => { setInitialSegment(nextSegment); saveProgress({ segment: nextSegment }); }}
+          onChangePresenter={() => { setAvatarPickerOrigin('classroom'); setView('avatars'); }}
         />
       )}
 
