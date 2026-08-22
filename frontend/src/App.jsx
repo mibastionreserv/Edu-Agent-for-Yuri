@@ -125,6 +125,39 @@ function Avatar({ id, mouth, state, size = 180 }) {
   );
 }
 
+const PRESENTER_TOKEN = '{{presenter}}';
+
+function substituteToken(rawText, name) {
+  return (rawText || '').split(PRESENTER_TOKEN).join(name);
+}
+
+// substituted-text offset -> template-text offset (name-independent). Если
+// offset попадает внутрь самого подставленного имени, откатывается к
+// началу токена — новый презентер в худшем случае повторит пару слов,
+// но никогда не пропустит контент.
+function toTemplateOffset(rawText, name, substitutedOffset) {
+  const parts = (rawText || '').split(PRESENTER_TOKEN);
+  let rawPos = 0;
+  let subPos = 0;
+  for (let i = 0; i < parts.length; i += 1) {
+    const partLen = parts[i].length;
+    if (substitutedOffset <= subPos + partLen) return rawPos + (substitutedOffset - subPos);
+    rawPos += partLen; subPos += partLen;
+    if (i < parts.length - 1) {
+      if (substitutedOffset < subPos + name.length) return rawPos;
+      rawPos += PRESENTER_TOKEN.length; subPos += name.length;
+    }
+  }
+  return rawPos;
+}
+
+// template-text offset -> substituted-text offset для конкретного имени:
+// длина подставленного ПРЕФИКСА (подстановка — чистое префикс-сохраняющее
+// преобразование, поэтому это точное значение, не оценка).
+function fromTemplateOffset(rawText, name, templateOffset) {
+  return substituteToken((rawText || '').slice(0, templateOffset), name).length;
+}
+
 // number of board steps revealed given how far narration has progressed
 function revealedFromProgress(charIndex, textLen, nSteps) {
   if (nSteps <= 0) return 0;
@@ -141,7 +174,8 @@ function revealedFromProgress(charIndex, textLen, nSteps) {
 // Q&A/presenter panel in isolation without driving the whole login/course
 // picker flow (SS-30/SS-31 regression tests).
 export function Classroom({
-  ui, lang, avatarId, course, moduleId, initialSegment, onExit, onSaved, onChangePresenter,
+  ui, lang, avatarId, course, moduleId, initialSegment, onExit, onSaved,
+  onChangePresenter, initialCharOffset, onInitialOffsetConsumed,
 }) {
   const [mod, setMod] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -200,6 +234,29 @@ export function Classroom({
   // segment, since the Web Speech API has no native "seek".
   const lastCharRef = useRef(0);
   const fullTextRef = useRef('');
+  // One-shot resume position, переданный от ПРЕДЫДУЩЕГО инстанса Classroom
+  // через "Change presenter" посреди сегмента. Хранится в template-relative
+  // виде (toTemplateOffset/fromTemplateOffset выше), чтобы пережить смену
+  // длины имени презентера. Потребляется ТОЛЬКО первым play() на этом
+  // инстансе — stopAll() обнуляет его так же, как lastCharRef, поэтому
+  // любая навигация по сегментам/Knowledge Check/размонтирование до
+  // нажатия Play забывает его, как обычную позицию паузы.
+  const pendingOffsetRef = useRef(0);
+  // Applied once `mod` actually loads, NOT at construction time: the
+  // pre-existing `[seg, mod]` effect below fires its stopAll() cleanup the
+  // moment `mod` first resolves (before the learner can possibly reach
+  // Play), and stopAll() zeroes pendingOffsetRef same as lastCharRef — a
+  // value seeded eagerly at mount would be wiped before it could ever be
+  // used. Guarded to run exactly once so later segment/module reloads
+  // within this same instance don't re-apply a stale initialCharOffset.
+  const initialOffsetAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialOffsetAppliedRef.current || !mod) return;
+    initialOffsetAppliedRef.current = true;
+    pendingOffsetRef.current = initialCharOffset || 0;
+    if (initialCharOffset) onInitialOffsetConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mod]);
   // Time-based progress-estimator interval (see speakWithMouth) and a flag
   // that tells its onEnd handler whether the utterance was deliberately
   // interrupted (pause/stop) rather than finished naturally.
@@ -349,6 +406,7 @@ export function Classroom({
     cancelSpeech();
     setSpeaking(false); setMouth(false); setPaused(false);
     lastCharRef.current = 0; fullTextRef.current = '';
+    pendingOffsetRef.current = 0; // hard stop забывает и pending Change-presenter resume point
     stopVoiceMode();
   }
 
@@ -948,8 +1006,17 @@ export function Classroom({
     setShowCheck(false);
     const full = presenterText(segment.text);
     fullTextRef.current = full;
-    lastCharRef.current = 0;
     setPaused(false);
+    const pending = pendingOffsetRef.current;
+    pendingOffsetRef.current = 0; // one-shot: только ЭТОТ play() может его потребить
+    const startOffset = pending
+      ? Math.min(fromTemplateOffset(segment.text, presenterName, pending), full.length) : 0;
+    if (startOffset > 0 && startOffset < full.length) {
+      lastCharRef.current = startOffset;
+      speakWithMouth(full.slice(startOffset), { driveBoard: true, charOffset: startOffset, fullLen: full.length });
+      return;
+    }
+    lastCharRef.current = 0;
     speakWithMouth(full, { driveBoard: true });
   }
   function togglePlay() {
@@ -1101,6 +1168,18 @@ export function Classroom({
     recognitionRef.current = rec;
   }
 
+  function handleChangePresenterClick() {
+    // Если offset от более раннего переключения ещё не потреблён (Play не
+    // нажимали с тех пор на этом инстансе) — это и есть настоящее "где
+    // учащийся остановился", нужно пронести его насквозь нетронутым, а не
+    // схлопывать в lastCharRef (который здесь читается как 0 только потому
+    // что на ЭТОМ инстансе ещё ничего не звучало).
+    const templateOffset = pendingOffsetRef.current
+      || (segment ? toTemplateOffset(segment.text, presenterName, lastCharRef.current) : 0);
+    stopAll();
+    onChangePresenter(templateOffset);
+  }
+
   function goSegment(next) {
     stopAll();
     const clamped = Math.max(0, Math.min((mod.segments.length - 1), next));
@@ -1122,7 +1201,7 @@ export function Classroom({
       <div className="topbar">
         <div className="crumb"><b>{course.title}</b><span>·</span><span className="mod">{mod.title}</span></div>
         {onChangePresenter && (
-          <button className="ghost" onClick={onChangePresenter}>🎭 {ui.changePresenter}</button>
+          <button className="ghost" onClick={handleChangePresenterClick}>🎭 {ui.changePresenter}</button>
         )}
         <button className="ghost" onClick={onExit}>← {ui.moduleList}</button>
       </div>
@@ -1338,6 +1417,13 @@ export function CourseApp({ user, onLogout }) {
   const [avatarId, setAvatarId] = useState('mira');
   const [moduleId, setModuleId] = useState(null);
   const [initialSegment, setInitialSegment] = useState(0);
+  const [pendingResumeOffset, setPendingResumeOffset] = useState(0);
+  // Pending offset валиден только для текста сегмента, против которого он
+  // был снят. Кнопки языка в шапке кликабельны даже на экране выбора
+  // презентера (вне условных рендеров view) — если учащийся сменит язык
+  // прямо там, следующий монтированный Classroom загрузит СОВСЕМ ДРУГОЙ
+  // текст сегмента, и захваченный offset нельзя применять к нему повторно.
+  useEffect(() => { setPendingResumeOffset(0); }, [lang]);
   const [toast, setToast] = useState('');
   // Saved lang/avatar are restored exactly once, on the very first load —
   // this effect also re-runs on every later user-initiated language switch
@@ -1479,9 +1565,15 @@ export function CourseApp({ user, onLogout }) {
         <Classroom
           ui={ui} lang={lang} avatarId={avatarId} course={course}
           moduleId={moduleId} initialSegment={initialSegment}
+          initialCharOffset={pendingResumeOffset}
+          onInitialOffsetConsumed={() => setPendingResumeOffset(0)}
           onExit={() => setView('modules')}
           onSaved={(nextSegment) => { setInitialSegment(nextSegment); saveProgress({ segment: nextSegment }); }}
-          onChangePresenter={() => { setAvatarPickerOrigin('classroom'); setView('avatars'); }}
+          onChangePresenter={(offset) => {
+            setAvatarPickerOrigin('classroom');
+            setPendingResumeOffset(offset || 0);
+            setView('avatars');
+          }}
         />
       )}
 
