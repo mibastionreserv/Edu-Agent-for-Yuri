@@ -105,7 +105,11 @@ function Avatar({ id, mouth, state, size = 180 }) {
         style={dims}
       >
         <img
-          src={`/content/avatars/${id}.jpg`}
+          // daniel.jpg doesn't exist; two real photo frames stand in for it
+          // and swap on the same mouth boolean the SVG blink already uses.
+          src={id === 'daniel'
+            ? (mouth ? '/content/avatars/daniel-mouth-wide.png' : '/content/avatars/daniel-mouth-closed.png')
+            : `/content/avatars/${id}.jpg`}
           alt={id}
           onError={() => setPhotoFailed(true)}
         />
