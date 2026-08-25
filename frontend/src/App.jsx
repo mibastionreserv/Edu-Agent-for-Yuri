@@ -38,7 +38,7 @@ function Toast({ msg }) {
 const PHOTO_LANDMARKS = {
   mira: { mouthX: 50, mouthY: 47 },
   meilin: { mouthX: 50, mouthY: 56 },
-  daniel: { mouthX: 50, mouthY: 57.5 },
+  daniel: { mouthX: 50, mouthY: 60 },
 };
 
 // Base photo path per persona; defaults to `${id}.jpg` when absent. Daniel's
