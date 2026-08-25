@@ -38,6 +38,20 @@ function Toast({ msg }) {
 const PHOTO_LANDMARKS = {
   mira: { mouthX: 50, mouthY: 47 },
   meilin: { mouthX: 50, mouthY: 56 },
+  daniel: { mouthX: 50, mouthY: 57.8 },
+};
+
+// Base photo path per persona; defaults to `${id}.jpg` when absent. Daniel's
+// is a square PNG (keeps the object-fit:cover crop from clipping the
+// costume the way the old portrait-shaped daniel.jpg did).
+const PHOTO_SRC_OVERRIDES = {
+  daniel: '/content/avatars/daniel-square-closed.png',
+};
+
+// Real cropped-mouth image to show inside .ap-mouth instead of the synthetic
+// CSS gradient the other photo personas use — only Daniel has one so far.
+const MOUTH_OVERLAY_IMAGES = {
+  daniel: '/content/avatars/daniel-mouth-open-overlay.png',
 };
 
 // Personas backed by a live Simli video avatar (real WebRTC face + lip-sync)
@@ -105,18 +119,27 @@ function Avatar({ id, mouth, state, size = 180 }) {
         style={dims}
       >
         <img
-          // daniel.jpg doesn't exist; two real photo frames stand in for it
-          // and swap on the same mouth boolean the SVG blink already uses.
-          src={id === 'daniel'
-            ? (mouth ? '/content/avatars/daniel-mouth-wide.png' : '/content/avatars/daniel-mouth-closed.png')
-            : `/content/avatars/${id}.jpg`}
+          src={PHOTO_SRC_OVERRIDES[id] || `/content/avatars/${id}.jpg`}
           alt={id}
           onError={() => setPhotoFailed(true)}
         />
         {lm && (
           <span
             className={`ap-mouth ${mouth ? 'open' : ''}`}
-            style={{ left: `${lm.mouthX}%`, top: `${lm.mouthY}%` }}
+            style={{
+              left: `${lm.mouthX}%`,
+              top: `${lm.mouthY}%`,
+              ...(MOUTH_OVERLAY_IMAGES[id] ? {
+                // Real photo crop is wider/taller than the default 15%/9%
+                // synthetic-gradient box; sized from the base photo's known
+                // 328x328 geometry so the 108x82 crop lines up 1:1 at rest.
+                width: '38%',
+                height: '25%',
+                backgroundImage: `url(${MOUTH_OVERLAY_IMAGES[id]})`,
+                backgroundSize: 'cover',
+                filter: 'none',
+              } : null),
+            }}
             aria-hidden="true"
           />
         )}
