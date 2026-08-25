@@ -189,9 +189,15 @@ input{font-family:inherit}
 .avatar-photo{position:relative;overflow:hidden;border-radius:14px;transition:transform .35s ease, box-shadow .2s ease}
 .avatar-photo img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .avatar-photo.listening{transform:rotate(-4deg)}
-.avatar-photo.speaking{box-shadow:0 0 0 4px rgba(23,183,166,.4)}
-.avatar-photo.speaking img{animation:ap-bob .44s ease-in-out infinite}
-@keyframes ap-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(1.5%)}}
+/* Bobs the whole container (photo + .ap-mouth together, as one rigid unit)
+   via the standalone `translate` property, not `transform` — so it composes
+   with .listening's `transform:rotate(-4deg)` instead of overwriting it, and
+   so the mouth overlay (a sibling of <img>, not a child) rides along with
+   the head instead of staying pinned to a fixed spot while the photo bobs
+   under it (previously animated on `img` alone, which left the mouth
+   visually detached from the face during speech). */
+.avatar-photo.speaking{box-shadow:0 0 0 4px rgba(23,183,166,.4); animation:ap-bob .44s ease-in-out infinite}
+@keyframes ap-bob{0%,100%{translate:0 0}50%{translate:0 1.5%}}
 .ap-mouth{position:absolute;width:15%;height:9%;border-radius:50%;pointer-events:none;
   background:radial-gradient(ellipse at center, rgba(80,32,28,.85) 0%, rgba(80,32,28,.45) 55%, rgba(80,32,28,0) 75%);
   filter:blur(1.5px);transform:translate(-50%,-30%) scaleY(.22);transform-origin:center;transition:transform .11s ease}
