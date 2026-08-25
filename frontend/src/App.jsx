@@ -38,20 +38,36 @@ function Toast({ msg }) {
 const PHOTO_LANDMARKS = {
   mira: { mouthX: 50, mouthY: 47 },
   meilin: { mouthX: 50, mouthY: 56 },
-  daniel: { mouthX: 50, mouthY: 57.8 },
+  daniel: { mouthX: 50, mouthY: 57.5 },
 };
 
 // Base photo path per persona; defaults to `${id}.jpg` when absent. Daniel's
-// is a square PNG (keeps the object-fit:cover crop from clipping the
-// costume the way the old portrait-shaped daniel.jpg did).
+// is a square PNG (keeps the object-fit:cover crop from clipping the costume
+// the way the old portrait-shaped daniel.jpg did) drawn with NO mouth at all
+// — the .ap-mouth overlay below is the only mouth ever rendered, so there's
+// no baked-in static mouth for it to drift out of alignment with.
 const PHOTO_SRC_OVERRIDES = {
-  daniel: '/content/avatars/daniel-square-closed.png',
+  daniel: '/content/avatars/daniel-base.png',
 };
 
 // Real cropped-mouth image to show inside .ap-mouth instead of the synthetic
 // CSS gradient the other photo personas use — only Daniel has one so far.
 const MOUTH_OVERLAY_IMAGES = {
   daniel: '/content/avatars/daniel-mouth-open-overlay.png',
+};
+
+// Size of the .ap-mouth overlay box, as a percentage of the .avatar-photo
+// container — NOT of the source image. Derived per persona from how large
+// their face actually is within their own square base photo (measured via
+// face-width-at-mouth-height), since two different base photos can frame the
+// face at very different scales. Horizontal is inflated ~1.15x relative to
+// vertical to compensate for object-fit:cover's horizontal-only crop on the
+// container's non-square (1:1.15) aspect ratio (see `dims` below) — vertical
+// needs no such compensation because that crop never touches the vertical
+// axis. Falls back to the old synthetic-gradient box's 38%/25% if a persona
+// gets a MOUTH_OVERLAY_IMAGES entry without a matching size here.
+const MOUTH_OVERLAY_SIZE = {
+  daniel: { width: '23.5%', height: '15.5%' },
 };
 
 // Personas backed by a live Simli video avatar (real WebRTC face + lip-sync)
@@ -130,11 +146,7 @@ function Avatar({ id, mouth, state, size = 180 }) {
               left: `${lm.mouthX}%`,
               top: `${lm.mouthY}%`,
               ...(MOUTH_OVERLAY_IMAGES[id] ? {
-                // Real photo crop is wider/taller than the default 15%/9%
-                // synthetic-gradient box; sized from the base photo's known
-                // 328x328 geometry so the 108x82 crop lines up 1:1 at rest.
-                width: '38%',
-                height: '25%',
+                ...(MOUTH_OVERLAY_SIZE[id] || { width: '38%', height: '25%' }),
                 backgroundImage: `url(${MOUTH_OVERLAY_IMAGES[id]})`,
                 backgroundSize: 'cover',
                 filter: 'none',
