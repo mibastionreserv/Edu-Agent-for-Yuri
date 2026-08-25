@@ -203,6 +203,18 @@ input{font-family:inherit}
 .presenter-dock[data-lipsync] .ap-mouth{
   transform:translate(-50%,-30%) scaleY(calc(.15 + .85 * var(--mouth, 0)));
   transition:transform .05s linear}
+/* Real-photo mouth crops (.ap-mouth.photo, e.g. Daniel) are much taller than
+   the default 9%-high gradient dot (25% vs 9% of the container). The -30%
+   Y-translate above centers the SMALL box acceptably, but on a box this much
+   taller it leaves the visual center ~20% of the box's own height (≈5% of
+   the whole avatar) below the mouthY landmark — squarely on the chin. -50%
+   is a true vertical center, keeping the landmark point (measured as the
+   real mouth centroid) at the middle of the box regardless of box height. */
+.ap-mouth.photo{transform:translate(-50%,-50%) scaleY(.22)}
+.ap-mouth.photo.open{transform:translate(-50%,-50%) scaleY(1)}
+.presenter-dock[data-lipsync] .ap-mouth.photo{
+  transform:translate(-50%,-50%) scaleY(calc(.15 + .85 * var(--mouth, 0)));
+  transition:transform .05s linear}
 .simli-avatar{position:relative;overflow:hidden;border-radius:14px;background:#0c1620}
 .simli-avatar video{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .25s ease}
 /* Persona photo shown beneath the video until live frames arrive. */

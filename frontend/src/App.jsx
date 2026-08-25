@@ -125,7 +125,7 @@ function Avatar({ id, mouth, state, size = 180 }) {
         />
         {lm && (
           <span
-            className={`ap-mouth ${mouth ? 'open' : ''}`}
+            className={`ap-mouth ${MOUTH_OVERLAY_IMAGES[id] ? 'photo' : ''} ${mouth ? 'open' : ''}`}
             style={{
               left: `${lm.mouthX}%`,
               top: `${lm.mouthY}%`,
