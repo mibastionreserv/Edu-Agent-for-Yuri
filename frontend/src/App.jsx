@@ -756,6 +756,12 @@ export function Classroom({
       setPrerenderedActive(false);
       return false;
     }
+    // Every other playback path raises `speaking` once real playback starts
+    // (SS-31) — this one never did, which was the actual root cause of the
+    // Play button never turning into Pause: togglePlay() only calls
+    // pauseNarration() when `speaking` is true, so a second click fell
+    // through to play() again instead, restarting the clip from 0.
+    setSpeaking(true);
     return true;
   }
 
