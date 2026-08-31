@@ -89,6 +89,7 @@ cd frontend && npm install && npm run dev
 | `CONTENT_DIR` | Path to `course-content` inside the backend container |
 | `WEB_PORT` | Public web port (default `8080`) |
 | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | Optional OpenAI-compatible answer enrichment (leave blank to use the built-in grounded engine) |
+| `GOOGLE_TTS_CREDENTIALS` | Optional: full JSON content of a Google Cloud service-account key with Cloud Text-to-Speech access. When set, narration/Q&A audio is synthesized via Google Cloud TTS first (stable GA product, explicit per-voice gender); Gemini TTS (via `LLM_API_KEY`/`GEMINI_TTS_API_KEY`) remains the fallback if this is unset or a call fails. |
 
 No secrets or credentials are committed; `.env` is git-ignored.
 

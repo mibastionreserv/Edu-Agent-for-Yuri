@@ -20,6 +20,7 @@ const TavusAvatar = forwardRef(function TavusAvatar({ size = 170, onStatusChange
   const conversationIdRef = useRef(null);
   const onStoppedSpeakingRef = useRef(onStoppedSpeaking);
   onStoppedSpeakingRef.current = onStoppedSpeaking;
+  const unmountedRef = useRef(false);
   const [status, setStatus] = useState('idle'); // idle | connecting | live | error
   const [error, setError] = useState('');
 
@@ -35,7 +36,10 @@ const TavusAvatar = forwardRef(function TavusAvatar({ size = 170, onStatusChange
     }
   }
 
-  useEffect(() => teardown, []);
+  useEffect(() => () => {
+    unmountedRef.current = true;
+    teardown();
+  }, []);
 
   useEffect(() => {
     if (onStatusChange) onStatusChange(status);
@@ -49,10 +53,16 @@ const TavusAvatar = forwardRef(function TavusAvatar({ size = 170, onStatusChange
     // only source of audio for this persona (no local fallback playing in
     // the meantime, unlike Simli).
     async start() {
+      unmountedRef.current = false;
       setStatus('connecting');
       setError('');
       try {
         const { conversationId, conversationUrl } = await api.tavusStart();
+        // The component may have unmounted (learner clicked "← Modules")
+        // while the Tavus conversation request was in flight — bail before
+        // touching any refs or joining the Daily room, so a call object
+        // never gets created for a session nobody owns anymore.
+        if (unmountedRef.current) return null;
         conversationIdRef.current = conversationId;
         // We never send our own mic/camera — Tavus is the only audio/video
         // source in echo mode. Without disabling these, Daily's default call
@@ -95,6 +105,13 @@ const TavusAvatar = forwardRef(function TavusAvatar({ size = 170, onStatusChange
             setTimeout(() => reject(new Error('Timed out connecting to the live avatar.')), 15000);
           }),
         ]);
+        // The component may have unmounted while join() was pending — leave
+        // the now-joined call instead of handing it back to a caller that no
+        // longer exists to receive/use it.
+        if (unmountedRef.current) {
+          teardown();
+          return null;
+        }
         return conversationId;
       } catch (e) {
         setStatus('error');

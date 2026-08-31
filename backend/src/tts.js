@@ -15,12 +15,17 @@
 // browser's Web Speech API, so narration itself never breaks.
 
 import { createHash } from 'node:crypto';
+import { synthesizeSpeechGoogleCloud } from './googleCloudTts.js';
 
 // Lesson narration is FIXED content: the same paragraphs are synthesized
 // over and over, for every learner and every replay. Caching by
-// hash(text + voice + model) collapses that to one Gemini call per distinct
-// line, ever - the single biggest lever against the 429 quota errors that
-// took TTS down.
+// hash(provider + text + voice + model) collapses that to one upstream call
+// per distinct line, ever - the single biggest lever against the 429 quota
+// errors that took TTS down.
+//
+// `provider` is part of the hash (not just model) so the Google Cloud TTS
+// and Gemini caches never collide/overwrite each other, even for identical
+// text: they return different binary formats and different voices.
 //
 // Stored in Postgres, NOT on local disk: Render's instance filesystem is
 // ephemeral, so a disk cache is wiped on every redeploy and restart and
@@ -29,8 +34,8 @@ import { createHash } from 'node:crypto';
 const memCache = new Map();
 const MEM_MAX = 120;
 
-function cacheKey(text, voice, model) {
-  return createHash('sha256').update(`${model} ${voice} ${text}`).digest('hex');
+function cacheKey(provider, text, voice, model) {
+  return createHash('sha256').update(`${provider} ${model} ${voice} ${text}`).digest('hex');
 }
 
 function memPut(key, buf) {
@@ -88,8 +93,46 @@ function pcmToWav(pcm, { sampleRate = 24000, channels = 1, bitDepth = 16 } = {})
   return Buffer.concat([header, pcm]);
 }
 
-// Returns a WAV Buffer, or throws. Callers should catch and fall back.
+// Returns { wav: Buffer, provider: 'google'|'gemini' }, or throws. Callers
+// should catch and fall back. `provider` on the return value is what let a
+// caller (the /api/tts route) tell a caller/QA-agent "this actually came
+// from Google Cloud" apart from "silently fell back to Gemini" — before this
+// there was no way to distinguish the two from outside the process, which
+// made the GOOGLE_TTS_CREDENTIALS rollout unverifiable short of reading
+// server logs.
 //
+// `languageCode`/`gender` are optional and only drive the Google Cloud TTS
+// attempt below — old callers that don't pass them (or a fresh deploy before
+// GOOGLE_TTS_CREDENTIALS is set on Render) skip straight to the Gemini path,
+// so behavior is unchanged until both the code AND the credentials are in
+// place.
+export async function synthesizeSpeech(text, {
+  voice = 'Gacrux', pool = null, languageCode = null, gender = null,
+} = {}) {
+  // Google Cloud TTS first: a mature GA product with a real gender parameter
+  // and a generous free quota, unlike the preview Gemini model below. Only
+  // attempted when the caller supplies both languageCode and gender (the
+  // frontend does, once updated) — any failure (not configured, no voice for
+  // this language+gender, network, timeout) falls through to the existing
+  // Gemini path untouched.
+  if (languageCode && gender) {
+    const googleVoiceKey = `${languageCode}:${String(gender).toUpperCase()}`;
+    const googleKey = cacheKey('google', text, googleVoiceKey, 'google-cloud-tts');
+    const cachedGoogle = await cacheGet(pool, googleKey);
+    if (cachedGoogle) return { wav: cachedGoogle, provider: 'google' };
+    try {
+      const wav = await synthesizeSpeechGoogleCloud(text, { languageCode, gender, pool });
+      await cacheSet(pool, googleKey, wav);
+      return { wav, provider: 'google' };
+    } catch (err) {
+      console.error('[tts] Google Cloud TTS failed, falling back to Gemini:', err.message);
+    }
+  }
+
+  const wav = await synthesizeSpeechGemini(text, { voice, pool });
+  return { wav, provider: 'gemini' };
+}
+
 // Uses the legacy generateContent API surface (v1beta/models/{model}:generateContent),
 // not the newer Interactions API — this is the older, more established surface and
 // its request/response shape is exactly what's documented at
@@ -97,18 +140,30 @@ function pcmToWav(pcm, { sampleRate = 24000, channels = 1, bitDepth = 16 } = {})
 // (An earlier version of this file called the Interactions API's /v1beta/interactions
 // endpoint with a guessed request body; that shape was never confirmed against the
 // real docs and is the most likely reason every call was failing.)
-export async function synthesizeSpeech(text, { voice = 'Gacrux', pool = null } = {}) {
+async function synthesizeSpeechGemini(text, { voice = 'Gacrux', pool = null } = {}) {
   const apiKey = process.env.GEMINI_TTS_API_KEY || process.env.LLM_API_KEY;
   if (!apiKey) throw new Error('TTS is not configured.');
   const model = process.env.GEMINI_TTS_MODEL || 'gemini-2.5-flash-preview-tts';
 
   // Serve from cache before spending any quota.
-  const key = cacheKey(text, voice, model);
+  const key = cacheKey('gemini', text, voice, model);
   const cached = await cacheGet(pool, key);
   if (cached) return cached;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
+  // Single budget for the WHOLE call (all retries combined), not per
+  // attempt: the frontend gives up on this request at 30s (frontend/src/
+  // api.js TTS_TIMEOUT_MS), so the server must stop retrying with margin to
+  // spare — 3 uncapped 15s attempts could otherwise run past that deadline,
+  // burning quota on a try nobody is waiting for anymore.
+  const deadline = Date.now() + 25000;
+
+  // Without a timeout a hung upstream call left every caller (the TTS
+  // request, and transitively the classroom UI waiting on it) stuck forever
+  // — see SS-6. AbortSignal.timeout() rejects with a DOMException named
+  // 'TimeoutError', which the retry loop below already treats as a
+  // network-level failure (retryable, same as any other fetch rejection).
   const call = () => fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -119,20 +174,27 @@ export async function synthesizeSpeech(text, { voice = 'Gacrux', pool = null } =
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
       },
     }),
+    signal: AbortSignal.timeout(Math.max(1000, deadline - Date.now())),
   });
 
   // Gemini TTS fails randomly at a low rate (documented: occasional 500s
-  // when it emits text tokens instead of audio; plus 429s under load).
-  // A failed line is expensive for us: the client falls back to the
-  // browser's Web Speech voice, which the live avatar cannot lip-sync to —
-  // the learner sees a frozen mouth. So retry up to 3 times with a short
-  // backoff on any retryable failure (5xx, 429, network error) before
-  // giving up.
+  // when it emits text tokens instead of audio; plus 429s under load; plus
+  // an HTTP 200 whose parts carry text instead of (or in addition to) audio
+  // — see the parts scan below). A failed line is expensive for us: the
+  // client falls back to the browser's Web Speech voice, which the live
+  // avatar cannot lip-sync to — the learner sees a frozen mouth. So retry up
+  // to 3 times with a short backoff on any retryable failure (5xx, 429,
+  // network error, 200-without-audio) before giving up, as long as the
+  // overall deadline above allows it.
   const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
   let res = null;
   let lastErr = null;
+  let b64 = null;
+  let noAudioInfo = '';
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (Date.now() >= deadline) { lastErr = new Error('TTS budget exhausted'); break; }
     if (attempt > 0) await sleep(attempt === 1 ? 300 : 900);
+    if (Date.now() >= deadline) { lastErr = new Error('TTS budget exhausted'); break; }
     try {
       res = await call();
     } catch (e) {
@@ -140,7 +202,24 @@ export async function synthesizeSpeech(text, { voice = 'Gacrux', pool = null } =
       res = null;
       continue;
     }
-    if (res.ok) break;
+    if (res.ok) {
+      // Find the audio part anywhere in the response, not just parts[0]:
+      // Gemini sometimes returns a text part alongside (or instead of, or
+      // before) the audio part while still answering 200.
+      const data = await res.json();
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      const audioPart = parts.find((p) => p?.inlineData?.data);
+      b64 = audioPart?.inlineData?.data || null;
+      if (b64) break;
+      // "200 with no audio" is retryable, same as a 5xx — Gemini's flake
+      // rate for this is low but nonzero, and a second attempt usually
+      // returns proper audio.
+      noAudioInfo = `finishReason=${data?.candidates?.[0]?.finishReason} `
+        + `partTypes=${parts.map((p) => Object.keys(p || {}).join('/')).join(',')}`;
+      console.error(`[tts] 200 without audio, retrying: model=${model} ${noAudioInfo}`);
+      lastErr = new Error('TTS returned no audio.');
+      continue;
+    }
     // 429 = quota/rate limit. Retrying makes it strictly WORSE: each attempt
     // burns another unit of the very quota we just ran out of. Fail fast and
     // let the caller latch onto the fallback voice for the session.
@@ -148,15 +227,20 @@ export async function synthesizeSpeech(text, { voice = 'Gacrux', pool = null } =
     if (res.status >= 500) continue; // transient server-side flake — retry
     break; // other 4xx are config errors; retrying won't help
   }
-  if (!res || !res.ok) {
-    const status = res ? res.status : `network (${lastErr && lastErr.message})`;
-    const body = res ? await res.text().catch(() => '') : '';
-    console.error(`[tts] request failed after retries: ${status} model=${model} body=${String(body).slice(0, 300)}`);
-    throw new Error(`TTS ${status}`);
+  if (!b64) {
+    if (res && !res.ok) {
+      const status = res.status;
+      const body = await res.text().catch(() => '');
+      console.error(`[tts] request failed after retries: ${status} model=${model} body=${String(body).slice(0, 300)}`);
+      throw new Error(`TTS ${status}`);
+    }
+    if (lastErr && lastErr.message === 'TTS returned no audio.') {
+      throw new Error(`TTS returned no audio. (${noAudioInfo})`);
+    }
+    const detail = lastErr && lastErr.message;
+    console.error(`[tts] request failed after retries: network (${detail})`);
+    throw new Error(`TTS network (${detail})`);
   }
-  const data = await res.json();
-  const b64 = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!b64) throw new Error('TTS returned no audio.');
   const wav = pcmToWav(Buffer.from(b64, 'base64'));
   await cacheSet(pool, key, wav); // next request for this line costs no quota
   return wav;

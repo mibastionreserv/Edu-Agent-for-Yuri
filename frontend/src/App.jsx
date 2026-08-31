@@ -2,13 +2,14 @@ import React, {
   useEffect, useMemo, useRef, useState,
 } from 'react';
 import { api, getToken, setToken, fetchTtsAudio } from './api.js';
+import * as ttsCircuit from './ttsCircuit.js';
 import { avatarSVG } from './avatar.js';
 import SimliAvatar from './SimliAvatar.jsx';
 import TavusAvatar from './TavusAvatar.jsx';
 import Board from './Board.jsx';
 import KnowledgeCheck from './KnowledgeCheck.jsx';
 import {
-  speak, cancelSpeech, pickVoiceName, speechSupported, langTag,
+  speak, cancelSpeech, pickVoiceInfo, speechSupported, langTag,
 } from './speech.js';
 
 const COURSE_ID = 'practical-scrum';
@@ -36,9 +37,39 @@ function Toast({ msg }) {
 // course-content/avatars/ to get a talking-mouth overlay on it too.
 const PHOTO_LANDMARKS = {
   mira: { mouthX: 50, mouthY: 47 },
+  daniel: { mouthX: 50, mouthY: 60 },
   // max: no measured mouth-landmark pass yet — the fallback photo path
   // (see PRERENDERED_VIDEO_AVATARS below) still shows his photo, just
   // without the little talking-mouth overlay, until one is measured.
+};
+
+// Base photo path per persona; defaults to `${id}.jpg` when absent. Daniel's
+// is a square PNG (keeps the object-fit:cover crop from clipping the costume
+// the way the old portrait-shaped daniel.jpg did) drawn with NO mouth at all
+// — the .ap-mouth overlay below is the only mouth ever rendered, so there's
+// no baked-in static mouth for it to drift out of alignment with.
+const PHOTO_SRC_OVERRIDES = {
+  daniel: '/content/avatars/daniel-base.png',
+};
+
+// Real cropped-mouth image to show inside .ap-mouth instead of the synthetic
+// CSS gradient the other photo personas use — only Daniel has one so far.
+const MOUTH_OVERLAY_IMAGES = {
+  daniel: '/content/avatars/daniel-mouth-open-overlay.png',
+};
+
+// Size of the .ap-mouth overlay box, as a percentage of the .avatar-photo
+// container — NOT of the source image. Derived per persona from how large
+// their face actually is within their own square base photo (measured via
+// face-width-at-mouth-height), since two different base photos can frame the
+// face at very different scales. Horizontal is inflated ~1.15x relative to
+// vertical to compensate for object-fit:cover's horizontal-only crop on the
+// container's non-square (1:1.15) aspect ratio (see `dims` below) — vertical
+// needs no such compensation because that crop never touches the vertical
+// axis. Falls back to the old synthetic-gradient box's 38%/25% if a persona
+// gets a MOUTH_OVERLAY_IMAGES entry without a matching size here.
+const MOUTH_OVERLAY_SIZE = {
+  daniel: { width: '23.5%', height: '15.5%' },
 };
 
 // Personas backed by a live Simli video avatar (real WebRTC face + lip-sync)
@@ -96,6 +127,19 @@ const PERSONA_TTS_VOICE = {
 };
 const DEFAULT_TTS_VOICE = 'Gacrux';
 
+// Gender of each persona's voice — used to steer the browser Web Speech
+// fallback (speech.js pickVoice) toward a voice that at least matches, so a
+// fallback for Daniel and one for Mei-Lin don't both collapse onto the same
+// system voice (SS-12).
+// yuri/amara: Tavus does its own TTS (see PERSONA_TTS_VOICE above), but this
+// map is also consulted by the Web Speech fallback used if the Tavus
+// connection itself fails (see isTavus branch in speakWithMouth) — without
+// an entry here that fallback silently defaulted to 'female' for Yuri, the
+// male persona (SS-34).
+const PERSONA_GENDER = {
+  mira: 'female', daniel: 'male', meilin: 'female', yuri: 'male', amara: 'male',
+};
+
 function Avatar({ id, mouth, state, size = 180 }) {
   // Content-driven photo avatars: drop course-content/avatars/<id>.jpg and it
   // replaces the drawn SVG automatically, no code change needed per persona.
@@ -116,14 +160,23 @@ function Avatar({ id, mouth, state, size = 180 }) {
         style={dims}
       >
         <img
-          src={`/content/avatars/${id}.jpg`}
+          src={PHOTO_SRC_OVERRIDES[id] || `/content/avatars/${id}.jpg`}
           alt={id}
           onError={() => setPhotoFailed(true)}
         />
         {lm && (
           <span
-            className={`ap-mouth ${mouth ? 'open' : ''}`}
-            style={{ left: `${lm.mouthX}%`, top: `${lm.mouthY}%` }}
+            className={`ap-mouth ${MOUTH_OVERLAY_IMAGES[id] ? 'photo' : ''} ${mouth ? 'open' : ''}`}
+            style={{
+              left: `${lm.mouthX}%`,
+              top: `${lm.mouthY}%`,
+              ...(MOUTH_OVERLAY_IMAGES[id] ? {
+                ...(MOUTH_OVERLAY_SIZE[id] || { width: '38%', height: '25%' }),
+                backgroundImage: `url(${MOUTH_OVERLAY_IMAGES[id]})`,
+                backgroundSize: 'cover',
+                filter: 'none',
+              } : null),
+            }}
             aria-hidden="true"
           />
         )}
@@ -134,6 +187,39 @@ function Avatar({ id, mouth, state, size = 180 }) {
     <div className="avatar-svg" style={dims}
       dangerouslySetInnerHTML={{ __html: avatarSVG(id, { mouth, state, k: `${id}${size}` }) }} />
   );
+}
+
+const PRESENTER_TOKEN = '{{presenter}}';
+
+function substituteToken(rawText, name) {
+  return (rawText || '').split(PRESENTER_TOKEN).join(name);
+}
+
+// substituted-text offset -> template-text offset (name-independent). Если
+// offset попадает внутрь самого подставленного имени, откатывается к
+// началу токена — новый презентер в худшем случае повторит пару слов,
+// но никогда не пропустит контент.
+function toTemplateOffset(rawText, name, substitutedOffset) {
+  const parts = (rawText || '').split(PRESENTER_TOKEN);
+  let rawPos = 0;
+  let subPos = 0;
+  for (let i = 0; i < parts.length; i += 1) {
+    const partLen = parts[i].length;
+    if (substitutedOffset <= subPos + partLen) return rawPos + (substitutedOffset - subPos);
+    rawPos += partLen; subPos += partLen;
+    if (i < parts.length - 1) {
+      if (substitutedOffset < subPos + name.length) return rawPos;
+      rawPos += PRESENTER_TOKEN.length; subPos += name.length;
+    }
+  }
+  return rawPos;
+}
+
+// template-text offset -> substituted-text offset для конкретного имени:
+// длина подставленного ПРЕФИКСА (подстановка — чистое префикс-сохраняющее
+// преобразование, поэтому это точное значение, не оценка).
+function fromTemplateOffset(rawText, name, templateOffset) {
+  return substituteToken((rawText || '').slice(0, templateOffset), name).length;
 }
 
 // number of board steps revealed given how far narration has progressed
@@ -148,8 +234,12 @@ function revealedFromProgress(charIndex, textLen, nSteps) {
 }
 
 /* ---------------- classroom ---------------- */
-function Classroom({
+// Named export (alongside the default App below) so tests can render the
+// Q&A/presenter panel in isolation without driving the whole login/course
+// picker flow (SS-30/SS-31 regression tests).
+export function Classroom({
   ui, lang, avatarId, course, moduleId, initialSegment, onExit, onSaved,
+  onChangePresenter, initialCharOffset, onInitialOffsetConsumed,
 }) {
   const [mod, setMod] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -164,13 +254,24 @@ function Classroom({
   const [thread, setThread] = useState([]);
   const [question, setQuestion] = useState('');
   const [asking, setAsking] = useState(false);
+  // Synchronous latch alongside `asking` (SS-30): the `asking` state's
+  // disabled={} only takes effect after React commits, so several clicks
+  // fired in the same task (or Enter/voice, neither of which even checks
+  // `asking`) can all read the same stale false before the first commit.
+  const askingRef = useRef(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceReplies, setVoiceReplies] = useState(true);
   // Off by default per SRS §UI — captions are opt-in via the caption chip,
   // not shown automatically.
   const [captionsOn, setCaptionsOn] = useState(false);
   const [showCheck, setShowCheck] = useState(false);
-  const [voiceName, setVoiceName] = useState('');
+  // Three-way, not the old two-valued voiceName string (SS-23): 'pending'
+  // (the browser's voice list hasn't actually loaded yet — up to ~700ms via
+  // 'voiceschanged', see speech.js loadVoices()) is a distinct state from
+  // 'none' (the list DID load and genuinely has no match for this
+  // language), so the UI never shows both "…(fallback)" and "no fallback
+  // voice found" at once.
+  const [voiceInfo, setVoiceInfo] = useState({ status: 'pending', name: '' });
   const [paused, setPaused] = useState(false);
   const [simliFailed, setSimliFailed] = useState(false);
   const [tavusFailed, setTavusFailed] = useState(false);
@@ -197,11 +298,38 @@ function Classroom({
   // segment, since the Web Speech API has no native "seek".
   const lastCharRef = useRef(0);
   const fullTextRef = useRef('');
+  // One-shot resume position, переданный от ПРЕДЫДУЩЕГО инстанса Classroom
+  // через "Change presenter" посреди сегмента. Хранится в template-relative
+  // виде (toTemplateOffset/fromTemplateOffset выше), чтобы пережить смену
+  // длины имени презентера. Потребляется ТОЛЬКО первым play() на этом
+  // инстансе — stopAll() обнуляет его так же, как lastCharRef, поэтому
+  // любая навигация по сегментам/Knowledge Check/размонтирование до
+  // нажатия Play забывает его, как обычную позицию паузы.
+  const pendingOffsetRef = useRef(0);
+  // Applied once `mod` actually loads, NOT at construction time: the
+  // pre-existing `[seg, mod]` effect below fires its stopAll() cleanup the
+  // moment `mod` first resolves (before the learner can possibly reach
+  // Play), and stopAll() zeroes pendingOffsetRef same as lastCharRef — a
+  // value seeded eagerly at mount would be wiped before it could ever be
+  // used. Guarded to run exactly once so later segment/module reloads
+  // within this same instance don't re-apply a stale initialCharOffset.
+  const initialOffsetAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialOffsetAppliedRef.current || !mod) return;
+    initialOffsetAppliedRef.current = true;
+    pendingOffsetRef.current = initialCharOffset || 0;
+    if (initialCharOffset) onInitialOffsetConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mod]);
   // Time-based progress-estimator interval (see speakWithMouth) and a flag
   // that tells its onEnd handler whether the utterance was deliberately
   // interrupted (pause/stop) rather than finished naturally.
   const progressTimerRef = useRef(null);
   const interruptedRef = useRef(false);
+  // Guaranteed-continue timer for resume()'s bridge phrase (Web Speech's
+  // 'end' event is not fully reliable) — kept in a ref so a later
+  // pause/stop/resume can cancel it before it fires over new state.
+  const resumeTimerRef = useRef(null);
 
   // Live Simli video avatar: always mounted for these personas — the
   // classroom presenter is exclusively the service-rendered video (SRS
@@ -209,6 +337,7 @@ function Classroom({
   // This presenter's server-TTS voice — the single voice used for every
   // line she speaks, and part of the cache key so it is stored per persona.
   const ttsVoice = PERSONA_TTS_VOICE[avatarId] || DEFAULT_TTS_VOICE;
+  const personaGender = PERSONA_GENDER[avatarId] || 'female';
 
   const simliFaceId = SIMLI_FACES[avatarId];
   const simliRef = useRef(null);
@@ -227,6 +356,12 @@ function Classroom({
   // decide whether narration still needs to wait (and show the blocking
   // loader) or can start instantly against the already-connected avatar.
   const simliUpRef = useRef(false);
+  // True once Simli's onReady has fired at all (success OR failure) — the
+  // latch that stops the blocking loader from reappearing on every later
+  // line once the connection's outcome is already known. Symmetric to
+  // photoTtsWarmedRef for photo personas, whose "warmed" latch never
+  // un-warms after a failed line either (SS-33).
+  const simliSettledRef = useRef(false);
   const recognitionRef = useRef(null);
   const voiceModeRef = useRef(false);
 
@@ -281,7 +416,30 @@ function Classroom({
     api.module(moduleId, lang)
       .then((m) => { if (alive) { setMod(m); setLoading(false); } })
       .catch((e) => { if (alive) { setError(e.message || ui.errorGeneric); setLoading(false); } });
-    return () => { alive = false; stopAll(); };
+    return () => {
+      alive = false; stopAll();
+      // The presenter-dock subtree (SimliAvatar/TavusAvatar + narration
+      // <audio>) is torn down and rebuilt for the new lang/module, but
+      // Classroom itself is not remounted — these latches belong to the OLD
+      // avatar instance and must not be inherited by the new one, or
+      // ensureLiveAvatarFromElement()/ensureTavusAvatar() hands back an
+      // already-resolved promise for a connection that no longer exists
+      // (SS-10, and its Tavus-side repeat, SS-29).
+      simliConnectReadyRef.current = null;
+      simliAttemptedRef.current = false;
+      simliUpRef.current = false;
+      simliSettledRef.current = false;
+      tavusReadyRef.current = null;
+      // tavusStoppedResolveRef is NOT reset here: stopAll() above already
+      // resolves and nulls it (via stopSpeechRef.current()) whenever a Tavus
+      // utterance was in flight, and it is otherwise always null between
+      // speakViaTavus() calls — nothing stale to inherit.
+      // avatarConnecting/photoTtsWarmedRef belong to this same OLD instance
+      // too — an overlay or "already warmed" latch left over from it must
+      // not bleed into the freshly (re)connecting one (SS-31).
+      setAvatarConnecting(false);
+      photoTtsWarmedRef.current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId, lang]);
 
@@ -289,9 +447,25 @@ function Classroom({
 
   useEffect(() => {
     let alive = true;
-    if (speechSupported()) pickVoiceName(lang).then((n) => { if (alive) setVoiceName(n || ''); });
+    if (!speechSupported()) { setVoiceInfo({ status: 'none', name: '' }); return () => { alive = false; }; }
+    setVoiceInfo({ status: 'pending', name: '' });
+    pickVoiceInfo(lang, personaGender).then((info) => { if (alive) setVoiceInfo(info); });
     return () => { alive = false; };
-  }, [lang]);
+    // A persona swap without a Classroom remount (personaGender) must also
+    // re-resolve the fallback voice, not just a language change (SS-23).
+  }, [lang, personaGender]);
+
+  // Watchdog: whichever code path raised the "connecting" overlay (Simli/
+  // Tavus pre-warm, a server-TTS fetch) is expected to clear it itself once
+  // it settles — but an unclassified/hung failure must not leave "Loading
+  // the presenter…" on screen forever (SS-31). One generic timer, keyed off
+  // the state itself, covers every call site instead of duplicating one at
+  // each of them.
+  useEffect(() => {
+    if (!avatarConnecting) return undefined;
+    const t = setTimeout(() => setAvatarConnecting(false), 7000);
+    return () => clearTimeout(t);
+  }, [avatarConnecting]);
 
   // Hard stop: cancels speech outright and forgets any resume position. Used
   // for segment navigation and unmount — a real "leave this moment" action,
@@ -301,10 +475,12 @@ function Classroom({
     speechGenRef.current += 1;
     if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
     if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
+    if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
     if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
     cancelSpeech();
     setSpeaking(false); setMouth(false); setPaused(false);
     lastCharRef.current = 0; fullTextRef.current = '';
+    pendingOffsetRef.current = 0; // hard stop забывает и pending Change-presenter resume point
     stopVoiceMode();
   }
 
@@ -319,6 +495,7 @@ function Classroom({
     speechGenRef.current += 1;
     if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
     if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
+    if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
     if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
     cancelSpeech();
     setSpeaking(false); setMouth(false); setPaused(true);
@@ -372,11 +549,40 @@ function Classroom({
   // the full-screen loader is shown only for that first load, mirroring how
   // live avatars show it only for their first connect.
   const photoTtsWarmedRef = useRef(false);
-  // Set once server TTS has failed for this session. From then on the whole
-  // lesson uses the browser voice consistently instead of retrying per line
-  // — silence is unacceptable, but so is flipping between two different
-  // voices mid-lesson. One voice, start to finish, whichever one is usable.
-  const ttsDownRef = useRef(false);
+  // Whether server TTS is currently usable is owned by ttsCircuit.js (a
+  // module-level circuit breaker, not component state — see SS-20): a 429
+  // opens it for a bounded, escalating backoff so one rate-limit blip
+  // doesn't strand the rest of the lesson on the browser voice, while a
+  // genuinely permanent failure (401/403/"not configured") opens it for the
+  // whole session. `ttsDown` mirrors its status in React state purely so the
+  // "🗣 Voice" indicator can react to it (refs/module state don't trigger a
+  // re-render on their own) — SS-4.
+  const [ttsDown, setTtsDown] = useState(() => ttsCircuit.state().status !== 'closed');
+  // A single line can fall back to the browser voice without the circuit
+  // ever opening (a transient failure — 5xx/no-audio/network blip — never
+  // trips it, see ttsCircuit.js's SS-12 note), so `ttsDown` alone isn't
+  // enough to know the "🗣 Voice" indicator's ttsVoice label is still
+  // accurate; this tracks whether the browser voice has genuinely spoken.
+  const [webSpeechUsed, setWebSpeechUsed] = useState(false);
+  function noteTtsSuccess() { ttsCircuit.recordSuccess(); setTtsDown(false); }
+  // Returns the failure's classification ('permanent' | 'rate-limit' |
+  // 'transient') so callers can also decide whether an inline retry is
+  // worth it — never for the first two (see ttsCircuit.js).
+  function noteTtsFailure(err) {
+    const kind = ttsCircuit.recordFailure(err);
+    setTtsDown(ttsCircuit.state().status !== 'closed');
+    return kind;
+  }
+  // The real per-attempt gate (mutating — see ttsCircuit.canAttempt(),
+  // grants exactly one half-open probe once the cooldown elapses). Used ONLY
+  // at the actual attempt site below, never speculatively.
+  function canAttemptTts() { return ttsCircuit.canAttempt(); }
+  // Coarse, non-mutating "is it even worth trying" check for deciding
+  // whether to voice a Q&A answer at all — reading state() here instead of
+  // calling canAttemptTts() means this check doesn't itself consume the one
+  // permitted half-open probe that the real attempt (inside speakWithMouth)
+  // reserves.
+  function ttsMaybeAvailable() { return ttsCircuit.state().status !== 'open'; }
 
   // Hands the narration <audio> element to SimliAvatar and resolves once the
   // avatar is genuinely on screen (or failed). Only ever attempts once per
@@ -428,11 +634,12 @@ function Classroom({
   // resume phrase is free when it is cached and, when it is not, both warms
   // the cache and reveals an unavailable TTS before anything is spoken.
   useEffect(() => {
-    if (loading || !mod || isTavus) return;
+    if (loading || !mod || isTavus || !canAttemptTts()) return;
     const probe = ui.resumeAfterQuestion || 'Let us continue.';
     let alive = true;
-    fetchTtsAudio(probe, ttsVoice)
-      .catch(() => { if (alive) ttsDownRef.current = true; });
+    fetchTtsAudio(probe, ttsVoice, { languageCode: langTag(lang), gender: personaGender.toUpperCase() })
+      .then(() => { if (alive) noteTtsSuccess(); })
+      .catch((e) => { if (alive) noteTtsFailure(e); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
@@ -443,16 +650,14 @@ function Classroom({
       const el = narrationAudioRef.current;
       if (!el) return;
       setAvatarConnecting(true);
-      Promise.race([
-        ensureLiveAvatarFromElement(el),
-        new Promise((resolve) => { setTimeout(() => resolve(false), 15000); }),
-      ]).then((ok) => {
+      // Single timeout for this handshake lives inside SimliAvatar
+      // (CONNECT_TIMEOUT_MS) — no separate race here, or a lost race could
+      // report "failed" over a connection that is still live (SS-1). Muting
+      // on failure is owned entirely by SimliAvatar's onReady callback below.
+      ensureLiveAvatarFromElement(el).then((ok) => {
         simliUpRef.current = ok;
         setAvatarConnecting(false);
-        if (!ok) {
-          setSimliFailed(true);
-          el.muted = false;
-        }
+        if (!ok) setSimliFailed(true);
       });
     } else if (isTavus) {
       setAvatarConnecting(true);
@@ -563,6 +768,7 @@ function Classroom({
     }
 
     tavusRef.current.sendText(text);
+    setSpeaking(true); // real speech, not just the connection, starts here (SS-31)
     await stopped;
     finish();
     return true;
@@ -594,6 +800,11 @@ function Classroom({
   }) {
     const el = narrationAudioRef.current;
     if (!el) return false;
+    // No photo landmarks means Avatar renders the drawn SVG (either the
+    // photo 404'd, e.g. course-content/avatars/daniel.jpg is missing, or the
+    // persona was never photographed) — its mouth is a boolean prop with no
+    // amplitude-driven overlay to follow, so it needs the blink below (SS-8).
+    const svgMouthBlink = !simliFaceId && !PHOTO_LANDMARKS[avatarId];
 
     // The connection itself is normally already up — it's pre-warmed on
     // classroom mount (see the effect above). Awaiting the cached promise is
@@ -603,23 +814,31 @@ function Classroom({
     // being synthesized, so the learner never watches a silent, motionless
     // (or worse, twitching) photo waiting for audio.
     const photoOverlay = !simliFaceId && !photoTtsWarmedRef.current;
-    const showOverlay = (Boolean(simliFaceId) && !simliUpRef.current) || photoOverlay;
+    // Once Simli's outcome is known (simliSettledRef), don't raise the
+    // blocking loader again on later lines just because it never reached
+    // 'live' — a permanently failed connection must not re-block every
+    // subsequent line for the rest of the lesson (SS-33).
+    const showOverlay = (Boolean(simliFaceId) && !simliUpRef.current && !simliSettledRef.current) || photoOverlay;
     if (showOverlay) setAvatarConnecting(true);
-    const simliPromise = simliFaceId
-      ? Promise.race([
-          ensureLiveAvatarFromElement(el),
-          new Promise((resolve) => { setTimeout(() => resolve(false), 10000); }),
-        ])
-      : null;
+    // No separate race/timeout here — SimliAvatar's own CONNECT_TIMEOUT_MS is
+    // the single timeout for this handshake (SS-1: duplicate timeouts caused
+    // a "failed" result to land over a connection that was still live).
+    const simliPromise = simliFaceId ? ensureLiveAvatarFromElement(el) : null;
 
+    const ttsLangGender = { languageCode: langTag(lang), gender: personaGender.toUpperCase() };
     let blob = null;
     try {
-      blob = await fetchTtsAudio(text, ttsVoice);
+      blob = await fetchTtsAudio(text, ttsVoice, ttsLangGender);
     } catch (firstErr) {
-      // Quota rejection (429): retrying is actively harmful — it burns more
-      // of the quota we just ran out of. Give up immediately so the session
-      // latches onto the fallback voice.
-      if (String((firstErr && firstErr.message) || '').includes('429')) {
+      // A rate-limit or auth/config failure opens the circuit (bounded
+      // backoff for 429, the whole session for a real permanent failure —
+      // see ttsCircuit.js) — retrying only this line, or any later one
+      // before it reopens, is pointless, and for 429 specifically it's
+      // actively harmful, burning more of the quota we just ran out of.
+      // Everything else (5xx, no-audio, timeout, network blip) is a one-off
+      // flake — fall back to the browser voice for THIS line only, the next
+      // line still tries server TTS (SS-12).
+      if (noteTtsFailure(firstErr) !== 'transient') {
         photoTtsWarmedRef.current = true;
         if (showOverlay) setAvatarConnecting(false);
         if (presenterDockRef.current) presenterDockRef.current.removeAttribute('data-lipsync');
@@ -635,8 +854,9 @@ function Classroom({
         return true; // stale — a newer line took over; drop silently
       }
       try {
-        blob = await fetchTtsAudio(text, ttsVoice);
-      } catch {
+        blob = await fetchTtsAudio(text, ttsVoice, ttsLangGender);
+      } catch (secondErr) {
+        noteTtsFailure(secondErr);
         photoTtsWarmedRef.current = true; // don't re-show the loader per line
         if (showOverlay) setAvatarConnecting(false);
         // Web Speech takes over — let the blink fallback animate the mouth,
@@ -645,6 +865,7 @@ function Classroom({
         return false;
       }
     }
+    noteTtsSuccess();
     photoTtsWarmedRef.current = true;
     const objectUrl = URL.createObjectURL(blob);
 
@@ -699,15 +920,20 @@ function Classroom({
     el.src = objectUrl;
 
     if (simliPromise) {
-      const ok = await simliPromise;
+      // The onReady callback (SimliAvatar prop, above) is the single owner
+      // of el.muted and of tearing the connection down on failure — this
+      // just reacts to the same resolved value for local bookkeeping.
+      // A hard upper bound on top of SimliAvatar's own CONNECT_TIMEOUT_MS:
+      // if simliPromise never settles at all (e.g. a start()/onReady defect
+      // — see SS-33), this line must still get spoken instead of hanging
+      // forever behind the loader.
+      const ok = await Promise.race([
+        simliPromise,
+        new Promise((resolve) => { setTimeout(() => resolve(false), 3000); }),
+      ]);
       if (showOverlay) setAvatarConnecting(false);
       if (ok) simliUpRef.current = true;
-      else {
-        setSimliFailed(true);
-        // Simli mutes the element to avoid double audio; if it isn't
-        // relaying after all, unmute or narration plays into silence.
-        el.muted = false;
-      }
+      else setSimliFailed(true);
       if (myGen !== speechGenRef.current) {
         URL.revokeObjectURL(objectUrl);
         return true;
@@ -769,9 +995,24 @@ function Classroom({
       await el.play();
       // Voice is actually flowing now — drop the first-load overlay and (for
       // photo personas) turn on the gentle speaking bob; the mouth itself is
-      // driven by the amplitude loop, not by this flag.
+      // driven by the amplitude loop, not by this flag. This is also where
+      // `speaking` itself turns true (SS-31) — see speakWithMouth.
+      setSpeaking(true);
       if (photoOverlay) setAvatarConnecting(false);
-      if (!simliFaceId) setMouth(true);
+      if (!simliFaceId) {
+        // Personas with no photo (and so no --mouth-driven .ap-mouth overlay
+        // to follow the envelope, e.g. Daniel) fall back to the drawn SVG,
+        // whose mouth is a plain boolean prop — blink it like the Web Speech
+        // fallback does, or it just sits statically open for the whole line
+        // (SS-8). Photo personas keep the single setMouth(true): their mouth
+        // is actually driven by the amplitude loop above.
+        if (svgMouthBlink) {
+          if (mouthTimer.current) clearInterval(mouthTimer.current);
+          mouthTimer.current = setInterval(() => setMouth((v) => !v), 220);
+        } else {
+          setMouth(true);
+        }
+      }
     } catch {
       // Autoplay blocked or similar — fall back to Web Speech for this line.
       if (showOverlay) setAvatarConnecting(false);
@@ -794,7 +1035,11 @@ function Classroom({
     onEnd, driveBoard, charOffset = 0, fullLen, segmentId,
   } = {}) {
     const myGen = ++speechGenRef.current;
-    setSpeaking(true);
+    // `speaking` itself is NOT raised here anymore (SS-31): it used to fire
+    // before any of the three playback paths below had actually produced
+    // sound, so a TTS fetch stuck on the 25-30s budget/timeout left the
+    // "Speaking" badge (and the pause icon) on for that whole stretch with
+    // no audio playing. Each path now sets it once real playback starts.
     interruptedRef.current = false;
     // NOTE: the 220ms mouth blink is NOT started here anymore — it made the
     // photo twitch while the TTS audio was still loading, before any sound.
@@ -814,7 +1059,11 @@ function Classroom({
       const wasInterrupted = interruptedRef.current;
       interruptedRef.current = false;
       if (driveBoard && !wasInterrupted) { setRevealed(nSteps); lastCharRef.current = textLen; }
-      if (onEnd) onEnd();
+      // onEnd (e.g. resume()'s continueLesson) must only fire on a genuine,
+      // un-interrupted finish of THIS speech generation — otherwise cutting
+      // off the "let's continue" bridge phrase (raise hand / pause again
+      // while it's talking) silently resumes the lesson on its own (SS-2).
+      if (onEnd && !wasInterrupted && myGen === speechGenRef.current) onEnd();
     };
 
     // Max: try a batch-pregenerated clip first — only possible for an actual
@@ -836,16 +1085,17 @@ function Classroom({
     // based mouth — plus a far better voice than the browser's.
     //
     // Server TTS is preferred (better voice, and it's the only audio a live
-    // avatar can lip-sync to). If it fails, ttsDownRef latches for the rest
-    // of the session so every later line uses the browser voice too — the
-    // presenter then sounds the same from start to finish instead of
-    // flipping between two voices line by line.
-    if (!isTavus && !ttsDownRef.current) {
+    // avatar can lip-sync to). speakViaServerTts() itself decides whether a
+    // failure opens the ttsCircuit (a bounded backoff for a 429, the whole
+    // session for a real permanent failure — SS-20) or is just this one line
+    // flaking (5xx, no-audio, timeout), in which case the circuit stays
+    // closed and the very next line tries the server again instead of the
+    // whole rest of the lesson being stuck on the browser voice (SS-12).
+    if (!isTavus && canAttemptTts()) {
       const handled = await speakViaServerTts(text, {
         charOffset, textLen, driveBoard, nSteps, finish, myGen,
       });
       if (handled) return;
-      ttsDownRef.current = true;
       if (myGen !== speechGenRef.current) return; // superseded while we tried
     }
 
@@ -885,12 +1135,16 @@ function Classroom({
     }
 
     stopSpeechRef.current = await speak(text, lang, {
+      // The utterance's real 'start' event (SS-31) — not speak()'s own
+      // resolution, which only means the call was handed to speechSynthesis.
+      onStart: () => { setSpeaking(true); setWebSpeechUsed(true); },
       onBoundary: driveBoard ? (ci) => {
         const abs = charOffset + ci;
         lastCharRef.current = Math.max(lastCharRef.current, abs);
         setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
       } : undefined,
       onEnd: finish,
+      gender: personaGender,
     });
     if (!speechSupported()) finish();
   }
@@ -900,8 +1154,24 @@ function Classroom({
     setShowCheck(false);
     const full = presenterText(segment.text);
     fullTextRef.current = full;
-    lastCharRef.current = 0;
     setPaused(false);
+    const pending = pendingOffsetRef.current;
+    pendingOffsetRef.current = 0; // one-shot: только ЭТОТ play() может его потребить
+    const startOffset = pending
+      ? Math.min(fromTemplateOffset(segment.text, presenterName, pending), full.length) : 0;
+    if (startOffset > 0 && startOffset < full.length) {
+      lastCharRef.current = startOffset;
+      // NOTE: mid-segment presenter switch into Max starts his prerendered
+      // clip from 0, not seeked to startOffset — speakViaPrerenderedVideo
+      // only resumes-in-place for the *same* clip already paused, not a
+      // freshly switched-to one. Acceptable for now: this only affects the
+      // presenter-switch-mid-segment edge case, not normal playback.
+      speakWithMouth(full.slice(startOffset), {
+        driveBoard: true, charOffset: startOffset, fullLen: full.length, segmentId: segment.id,
+      });
+      return;
+    }
+    lastCharRef.current = 0;
     speakWithMouth(full, { driveBoard: true, segmentId: segment.id });
   }
   function togglePlay() {
@@ -934,6 +1204,11 @@ function Classroom({
   function resume() {
     stopVoiceMode();
     setHandUp(false);
+
+    // A previous resume() call's guarantee timer must not fire over this
+    // one's state (SS-2) — an orphaned 12s timer from an earlier hand-raise
+    // could otherwise call continueLesson() long after the learner moved on.
+    if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
 
     // Snapshot WHERE to continue right now, before anything else speaks.
     // Reading these refs after the bridge phrase finished was the bug: by
@@ -972,12 +1247,14 @@ function Classroom({
     // utterance, some network voices) that the callback alone is not
     // dependable. continueLesson is idempotent, so both paths are safe.
     speakWithMouth(bridge, { driveBoard: false, onEnd: continueLesson });
-    setTimeout(continueLesson, 12000);
+    resumeTimerRef.current = setTimeout(() => { resumeTimerRef.current = null; continueLesson(); }, 12000);
   }
 
   async function submitQuestion(text, viaVoice = false) {
     const q = (text ?? question).trim();
     if (!q) return;
+    if (askingRef.current) return;
+    askingRef.current = true;
     if (!handUp) { pauseNarration(); setHandUp(true); }
     const history = threadRef.current
       .filter((m) => m.role === 'learner' || (m.role === 'presenter' && m.topicality))
@@ -988,13 +1265,26 @@ function Classroom({
       const res = await api.ask({ moduleId, lang, question: q, history, askedByVoice: viaVoice, avatarId });
       setThinking(false);
       setThread((t) => [...t, {
-        role: 'presenter', text: res.answer, topicality: res.topicality, source: res.source, sources: res.sources,
+        role: 'presenter',
+        text: res.answer,
+        topicality: res.topicality,
+        source: res.source,
+        sources: res.sources,
+        certainty: res.certainty,
       }]);
-      if ((viaVoice || voiceReplies) && speechSupported()) speakWithMouth(res.answer, { driveBoard: false });
+      // Real playback for this line goes through server TTS (or Tavus) via
+      // speakWithMouth, neither of which depends on Web Speech — only gate on
+      // speechSupported() once the circuit is actually open, so the browser
+      // fallback voice remains the true "can we speak at all?" check. This
+      // is a coarse, non-consuming check (ttsMaybeAvailable), not the real
+      // per-attempt gate — that one lives inside speakWithMouth itself.
+      if ((viaVoice || voiceReplies) && (ttsMaybeAvailable() || speechSupported())) {
+        speakWithMouth(res.answer, { driveBoard: false });
+      }
     } catch (e) {
       setThinking(false);
       setThread((t) => [...t, { role: 'presenter', text: e.message || ui.errorGeneric, topicality: 'error' }]);
-    } finally { setAsking(false); }
+    } finally { askingRef.current = false; setAsking(false); }
   }
 
   // Pressing the Speak tab is the one and only mic trigger: it turns speech
@@ -1033,6 +1323,18 @@ function Classroom({
     recognitionRef.current = rec;
   }
 
+  function handleChangePresenterClick() {
+    // Если offset от более раннего переключения ещё не потреблён (Play не
+    // нажимали с тех пор на этом инстансе) — это и есть настоящее "где
+    // учащийся остановился", нужно пронести его насквозь нетронутым, а не
+    // схлопывать в lastCharRef (который здесь читается как 0 только потому
+    // что на ЭТОМ инстансе ещё ничего не звучало).
+    const templateOffset = pendingOffsetRef.current
+      || (segment ? toTemplateOffset(segment.text, presenterName, lastCharRef.current) : 0);
+    stopAll();
+    onChangePresenter(templateOffset);
+  }
+
   function goSegment(next) {
     stopAll();
     const clamped = Math.max(0, Math.min((mod.segments.length - 1), next));
@@ -1044,21 +1346,30 @@ function Classroom({
   if (!mod || mod.segments.length === 0) return <div className="room"><div className="state">{ui.empty}</div></div>;
 
   const isLast = seg >= mod.segments.length - 1;
-  const avatarState = handUp && !speaking ? 'listening' : (thinking ? 'listening' : 'idle');
+  // "Listening" must track the mic actually being open (voiceMode), not just
+  // a raised hand — handUp stays true well after an answer has finished
+  // playing, which previously left the badge stuck on "Listening".
+  const avatarState = thinking ? 'listening' : (voiceMode && !speaking ? 'listening' : 'idle');
 
   return (
     <div className="room">
-      {avatarConnecting && (
-        <div className="avatar-loading-overlay" role="alert" aria-live="assertive">
-          <Spinner label={ui.avatarLoading || 'Loading the presenter…'} />
-        </div>
-      )}
       <div className="topbar">
         <div className="crumb"><b>{course.title}</b><span>·</span><span className="mod">{mod.title}</span></div>
+        {onChangePresenter && (
+          <button className="ghost" onClick={handleChangePresenterClick}>🎭 {ui.changePresenter}</button>
+        )}
         <button className="ghost" onClick={onExit}>← {ui.moduleList}</button>
       </div>
 
       <div className="split" ref={splitRef}>
+        {/* Scoped to the lesson area only (not the topbar/appbar above) — a
+            full-viewport overlay here used to swallow the first click on
+            "← Modules" or the language switcher while it was up (SS-5). */}
+        {avatarConnecting && (
+          <div className="avatar-loading-overlay" role="alert" aria-live="assertive">
+            <Spinner label={ui.avatarLoading || 'Loading the presenter…'} />
+          </div>
+        )}
         <div className="left-pane">
           <div className="stage">
             <div className={`board-col ${captionsOn && !showCheck ? 'with-captions' : ''}`}>
@@ -1093,12 +1404,27 @@ function Classroom({
                   posterSrc={`/content/avatars/${avatarId}.jpg`}
                   onReady={(ok) => {
                     simliUpRef.current = ok;
-                    if (!ok) {
+                    simliSettledRef.current = true;
+                    const el = narrationAudioRef.current;
+                    if (ok) {
+                      // Symmetric to the failure branch below: Simli's onReady
+                      // is not monotonic (a timed-out attempt can still report
+                      // success once real frames arrive), so any earlier
+                      // unmute here must be undone or the line plays twice —
+                      // once from Simli, once from the local element.
+                      setSimliFailed(false);
+                      if (el) el.muted = true;
+                    } else {
                       setSimliFailed(true);
+                      // Tear the connection down for good: without this, a
+                      // late frame arriving after this "failure" would flip
+                      // onReady(true) later while narration is already
+                      // playing unmuted locally — the double-voice bug this
+                      // guards against.
+                      if (simliRef.current) simliRef.current.stop();
                       // Simli's listenToAudioElement mutes local playback so
                       // the voice is heard once, via Simli. If Simli isn't
                       // delivering after all, unmute or the lesson is silent.
-                      const el = narrationAudioRef.current;
                       if (el) el.muted = false;
                     }
                     if (simliConnectResolveRef.current) {
@@ -1146,7 +1472,7 @@ function Classroom({
                 <Avatar id={avatarId} mouth={mouth} state={avatarState} size={150} />
               )}
               <div className={`badge ${(speaking || thinking) ? 'on' : ''}`}>
-                {thinking ? ui.thinking : (speaking ? ui.speaking : (handUp ? ui.listening : presenterName))}
+                {thinking ? ui.thinking : (speaking ? ui.speaking : (voiceMode ? ui.listening : presenterName))}
               </div>
               {/* Hidden player for server-synthesized speech — for Simli
                   personas its Web Audio routing feeds the live avatar's
@@ -1160,8 +1486,8 @@ function Classroom({
           </div>
 
           <div className="controls">
-            <button className="tbtn" onClick={() => goSegment(seg - 1)} disabled={avatarConnecting || seg === 0} aria-label={ui.type}>⏮</button>
-            <button className="tbtn play" onClick={togglePlay} disabled={avatarConnecting} aria-label={ui.play}>{speaking ? '⏸' : '▶'}</button>
+            <button className="tbtn" onClick={() => goSegment(seg - 1)} disabled={avatarConnecting || seg === 0} aria-label={ui.prev}>⏮</button>
+            <button className="tbtn play" onClick={togglePlay} disabled={avatarConnecting} aria-label={speaking ? ui.pause : ui.play}>{speaking ? '⏸' : '▶'}</button>
             <button className="tbtn" onClick={() => goSegment(seg + 1)} disabled={avatarConnecting || isLast} aria-label={ui.next}>⏭</button>
             <div className="progress">
               <span>{`${ui.module} ${mod.order || ''} · ${seg + 1}/${mod.segments.length}`}</span>
@@ -1194,6 +1520,7 @@ function Classroom({
                 {m.role === 'learner' && m.viaVoice && <span className="mic-tag">🎙</span>}
                 {m.text}
                 {m.source && <span className="src">{ui.onTopicSource} · {(m.sources && m.sources.join(', ')) || m.source}</span>}
+                {m.certainty === 'low' && <span className="src low-certainty">⚠ {ui.lowCertainty}</span>}
               </div>
             ))}
             {asking && <div className="bubble a"><Spinner label={ui.thinking} /></div>}
@@ -1207,7 +1534,8 @@ function Classroom({
               <div className="ask-row">
                 <input value={question} placeholder={ui.askPlaceholder}
                   onChange={(e) => setQuestion(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && submitQuestion()} />
+                  onKeyDown={(e) => e.key === 'Enter' && submitQuestion()}
+                  disabled={asking} />
                 <button className="primary sm" onClick={() => submitQuestion()} disabled={asking}>{ui.ask}</button>
               </div>
             ) : (
@@ -1216,8 +1544,32 @@ function Classroom({
                 <span className="hint">{ui.holdToTalk}</span>
               </div>
             )}
-            {speechSupported() && voiceName && <div className="voicename">🗣 {ui.voice}: {voiceName}</div>}
-            {!speechSupported() && <div className="voicename">{ui.voiceUnavailable || ''}</div>}
+            {/* The real voice for every line (narration, resume phrase, Q&A
+                answers) is this persona's server-TTS voice, not the browser's
+                Web Speech voice — show that as the primary indicator, and
+                only call out the browser fallback once it has actually been
+                used (whole-session latch via `ttsDown`, SS-4, OR a single
+                line that fell back without tripping the circuit at all —
+                `webSpeechUsed`, see its declaration above). When either is
+                true, voiceInfo.status distinguishes "still resolving"
+                (pending) from "genuinely no match for this language" (none)
+                — showing a placeholder fallback name AND "no fallback voice
+                found" at the same time was the SS-23 bug; while it's still
+                pending we show neither the "(fallback)" suffix nor the
+                warning line, and we never show the server persona voice
+                either (that was this ticket's bug: it named the wrong
+                entity — a voice that isn't the one actually speaking). */}
+            {!isTavus && ((ttsDown || webSpeechUsed) ? voiceInfo.status !== 'none' : true) && (
+              <div className="voicename">
+                🗣 {ui.voice}: {(ttsDown || webSpeechUsed)
+                  ? (voiceInfo.status === 'ready' ? voiceInfo.name : '…')
+                  : ttsVoice}
+                {(ttsDown || webSpeechUsed) && voiceInfo.status === 'ready' && ' (fallback)'}
+              </div>
+            )}
+            {(ttsDown || webSpeechUsed) && voiceInfo.status === 'none' && (
+              <div className="voicename">{ui.voiceUnavailable || ''}</div>
+            )}
           </div>
         </aside>
       </div>
@@ -1226,17 +1578,34 @@ function Classroom({
 }
 
 /* ---------------- course shell ---------------- */
-function CourseApp({ user, onLogout }) {
+export function CourseApp({ user, onLogout }) {
   const [lang, setLang] = useState('en');
   const [ui, setUi] = useState(null);
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [view, setView] = useState('welcome');
+  // Куда вернуться с экрана выбора презентера: 'modules' для первого запуска
+  // курса (существующее поведение), 'classroom' если учащийся открыл этот
+  // экран прямо из урока через "Change presenter" — тогда moduleId и
+  // initialSegment уже указывают на нужный урок/сегмент и трогать их не нужно.
+  const [avatarPickerOrigin, setAvatarPickerOrigin] = useState('modules');
   const [avatarId, setAvatarId] = useState('mira');
   const [moduleId, setModuleId] = useState(null);
   const [initialSegment, setInitialSegment] = useState(0);
+  const [pendingResumeOffset, setPendingResumeOffset] = useState(0);
+  // Pending offset валиден только для текста сегмента, против которого он
+  // был снят. Кнопки языка в шапке кликабельны даже на экране выбора
+  // презентера (вне условных рендеров view) — если учащийся сменит язык
+  // прямо там, следующий монтированный Classroom загрузит СОВСЕМ ДРУГОЙ
+  // текст сегмента, и захваченный offset нельзя применять к нему повторно.
+  useEffect(() => { setPendingResumeOffset(0); }, [lang]);
   const [toast, setToast] = useState('');
+  // Saved lang/avatar are restored exactly once, on the very first load —
+  // this effect also re-runs on every later user-initiated language switch
+  // (it depends on [lang]), and re-applying the saved values there would
+  // silently stomp on a presenter/language the learner just picked (SS-7).
+  const hydratedRef = useRef(false);
 
   async function loadAll(l) {
     setLoading(true); setError('');
@@ -1246,21 +1615,46 @@ function CourseApp({ user, onLogout }) {
       try {
         const p = await api.getProgress();
         if (p) {
-          if (p.avatar_id) setAvatarId(p.avatar_id);
+          if (!hydratedRef.current) {
+            if (p.avatar_id) setAvatarId(p.avatar_id);
+            // Applying a different saved language re-triggers this same
+            // effect (it depends on [lang]) for a second, final pass — by
+            // then hydratedRef.current is already true, so that pass does
+            // not loop back here.
+            if (p.lang && p.lang !== l) setLang(p.lang);
+          }
           if (p.module_id) { setModuleId(p.module_id); setInitialSegment(p.segment_index || 0); }
         }
       } catch { /* no progress yet */ }
+      hydratedRef.current = true;
       setLoading(false);
     } catch (e) { setError(e.message || 'Failed to load'); setLoading(false); }
   }
   useEffect(() => { loadAll(lang); /* eslint-disable-next-line */ }, [lang]);
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 1800); }
-  async function saveProgress(nextSegment) {
+  // Accepts overrides for whichever value just changed, since the caller's
+  // own setState (setAvatarId/setLang/setInitialSegment) has not necessarily
+  // committed yet when this reads the surrounding state (SS-7: presenter and
+  // language choices are saved immediately, not only on segment navigation).
+  // silent: skip the toast entirely. Needed for the language-change call
+  // site below — `ui` here is a closure over the OLD language's strings,
+  // and the new ones only arrive later via loadAll(), so an immediate
+  // showToast(ui.saved) would flash the previous language's "Saved" text
+  // (SS-14). Saving itself is unaffected either way.
+  async function saveProgress({
+    segment, avatar, language, silent,
+  } = {}) {
     try {
-      await api.saveProgress({ courseId: COURSE_ID, moduleId, segmentIndex: nextSegment ?? initialSegment, lang, avatarId });
-      showToast(ui.saved);
-    } catch { showToast(ui.errorGeneric); }
+      await api.saveProgress({
+        courseId: COURSE_ID,
+        moduleId,
+        segmentIndex: segment ?? initialSegment,
+        lang: language ?? lang,
+        avatarId: avatar ?? avatarId,
+      });
+      if (!silent) showToast(ui.saved);
+    } catch { if (!silent) showToast(ui.errorGeneric); }
   }
 
   if (loading || !ui) return <div className="shell"><Spinner label="Loading…" /></div>;
@@ -1272,7 +1666,8 @@ function CourseApp({ user, onLogout }) {
         <div className="appbar-right">
           <div className="lang">
             {(course.supportedLanguages || ['en']).map((l) => (
-              <button key={l} className={lang === l ? 'sel' : ''} onClick={() => setLang(l)}>{l.toUpperCase()}</button>
+              <button key={l} className={lang === l ? 'sel' : ''}
+                onClick={() => { setLang(l); saveProgress({ language: l, silent: true }); }}>{l.toUpperCase()}</button>
             ))}
           </div>
           <span className="who">{(user && user.displayName) || ''}</span>
@@ -1290,7 +1685,7 @@ function CourseApp({ user, onLogout }) {
             <p>{course.modules.length} {ui.moduleList.toLowerCase()} · {(course.supportedLanguages || []).join(' / ').toUpperCase()}</p>
             <div className="wsteps">{course.modules.map((m) => <span key={m.id} className="wstep">{m.title}</span>)}</div>
             <div className="wcta">
-              <button className="primary" onClick={() => setView('avatars')}>{ui.startCourse}</button>
+              <button className="primary" onClick={() => { setAvatarPickerOrigin('modules'); setView('avatars'); }}>{ui.startCourse}</button>
               {moduleId && <button className="ghost" onClick={() => setView('classroom')}>{ui.resume}</button>}
             </div>
           </div>
@@ -1304,11 +1699,16 @@ function CourseApp({ user, onLogout }) {
               card's right edge. */}
           <div className="sel-head">
             <h2>{ui.choosePresenter}</h2>
-            <button className="primary" onClick={() => setView('modules')}>{ui.continue}</button>
+            <button className="primary" onClick={() => {
+              const dest = avatarPickerOrigin;
+              setAvatarPickerOrigin('modules'); // сброс — защита от протухшего 'classroom'
+              setView(dest);
+            }}>{ui.continue}</button>
           </div>
           <div className="cards">
             {course.avatars.map((a) => (
-              <button key={a.id} className={`acard ${avatarId === a.id ? 'sel' : ''}`} onClick={() => setAvatarId(a.id)}>
+              <button key={a.id} className={`acard ${avatarId === a.id ? 'sel' : ''}`}
+                onClick={() => { setAvatarId(a.id); saveProgress({ avatar: a.id }); }}>
                 <Avatar id={a.id} size={140} />
                 <b>{a.name}</b><span className="role">{a.role}</span>
                 <span className="desc">{a.desc}</span>
@@ -1341,8 +1741,15 @@ function CourseApp({ user, onLogout }) {
         <Classroom
           ui={ui} lang={lang} avatarId={avatarId} course={course}
           moduleId={moduleId} initialSegment={initialSegment}
+          initialCharOffset={pendingResumeOffset}
+          onInitialOffsetConsumed={() => setPendingResumeOffset(0)}
           onExit={() => setView('modules')}
-          onSaved={(nextSegment) => { setInitialSegment(nextSegment); saveProgress(nextSegment); }}
+          onSaved={(nextSegment) => { setInitialSegment(nextSegment); saveProgress({ segment: nextSegment }); }}
+          onChangePresenter={(offset) => {
+            setAvatarPickerOrigin('classroom');
+            setPendingResumeOffset(offset || 0);
+            setView('avatars');
+          }}
         />
       )}
 

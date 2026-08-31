@@ -14,11 +14,12 @@ const { createApp } = await import('../src/app.js');
 const { runMigrations } = await import('../src/migrate.js');
 
 let app;
+let pool;
 
 beforeAll(async () => {
   const mem = newDb();
   const { Pool } = mem.adapters.createPg();
-  const pool = new Pool();
+  pool = new Pool();
   await runMigrations(pool);
   app = createApp(pool);
 });
@@ -26,6 +27,16 @@ beforeAll(async () => {
 describe('API flow: course -> auth -> progress -> ask', () => {
   const creds = { email: 'qa.user@example.com', password: 'super-secret-123', displayName: 'QA User' };
   let token;
+
+  // SS-32: /api/health must expose the deployed commit so deploy tooling can
+  // confirm a fresh Docker image actually shipped, without server log access.
+  it('reports commit and builtAt on the health check', async () => {
+    const res = await request(app).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body).toHaveProperty('commit');
+    expect(res.body).toHaveProperty('builtAt');
+  });
 
   it('serves the localized course listing (4 languages)', async () => {
     const res = await request(app).get('/api/course?lang=en');
@@ -42,6 +53,9 @@ describe('API flow: course -> auth -> progress -> ask', () => {
     expect(res.body.segments.length).toBeGreaterThan(0);
     expect(res.body.check).toBeTruthy();
     expect(res.body.check.items.length).toBeGreaterThan(0);
+    // SS-3: loadModule() used to drop `order`, so the classroom progress
+    // chip showed "undefined · N/M" instead of "Module 1 · N/M".
+    expect(res.body.order).toBe(1);
   });
 
   it('rejects weak passwords on registration', async () => {
@@ -110,6 +124,18 @@ describe('API flow: course -> auth -> progress -> ask', () => {
     const list = await request(app).get('/api/questions').set('Authorization', `Bearer ${token}`);
     expect(list.status).toBe(200);
     expect(list.body.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // SS-25: provider/confidence/certainty are computed per answer but were
+  // never persisted, making silent LLM->local degradation invisible.
+  it('logs a non-empty provider for an answered question (SS-25)', async () => {
+    const { rows } = await pool.query(
+      'SELECT provider, confidence, certainty FROM questions WHERE question = $1 ORDER BY created_at DESC LIMIT 1',
+      ['How long is the Daily Scrum?'],
+    );
+    expect(rows.length).toBe(1);
+    expect(rows[0].provider).toBeTruthy();
+    expect(typeof rows[0].confidence).toBe('number');
   });
 
   it('deflects an off-topic question', async () => {

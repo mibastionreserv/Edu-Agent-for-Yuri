@@ -78,6 +78,34 @@ describe('grounded Q&A business flow (Practical Scrum - Events module)', () => {
   });
 });
 
+describe('grounded Q&A business flow (Practical Scrum - Roles module) - SS-17', () => {
+  let chunks;
+  beforeAll(() => {
+    const mod = loadModule('m1-roles', 'en');
+    chunks = mod.knowledgeChunks;
+    expect(chunks.length).toBeGreaterThan(0);
+  });
+
+  it('answers "What does the Scrum Master do?" from the Scrum Master heading, not an earlier tied heading', () => {
+    const res = answerQuestion({ question: 'What does the Scrum Master do?', lang: 'en', chunks });
+    expect(res.topicality).toBe('on');
+    expect(res.source).toBe('Scrum Master');
+    expect(res.answer.toLowerCase()).toMatch(/accountable for the team's effectiveness/);
+  });
+
+  it('does not fabricate an answer for material this module does not cover (Sprint Goal is an events-module topic)', () => {
+    const res = answerQuestion({ question: 'What is the Sprint Goal?', lang: 'en', chunks });
+    expect(res.topicality).toBe('off');
+    expect(res.source).toBeNull();
+  });
+
+  it('keeps ranking stable when chunk order is shuffled (source must not depend on file order)', () => {
+    const shuffled = [...chunks].reverse();
+    const res = answerQuestion({ question: 'What does the Scrum Master do?', lang: 'en', chunks: shuffled });
+    expect(res.source).toBe('Scrum Master');
+  });
+});
+
 describe('multilingual grounding (Italian, Greek, metrics)', () => {
   it('answers an on-topic Italian question from the Italian knowledge base', () => {
     const mod = loadModule('m2-events', 'it');
@@ -97,5 +125,227 @@ describe('multilingual grounding (Italian, Greek, metrics)', () => {
     const res = answerQuestion({ question: 'What is velocity?', lang: 'en', chunks: mod.knowledgeChunks });
     expect(res.topicality).toBe('on');
     expect(res.answer.toLowerCase()).toMatch(/story points|forecast|team/);
+  });
+});
+
+// SS-17: the original bug was that `source` depended on where a heading sat
+// in the markdown file (stable-sort tie-breaking), not on relevance. These
+// property tests shuffle both chunk order and sentence order within a chunk
+// for a small golden set and assert the picked `source` never moves.
+describe('ranking is order-independent (SS-17 regression guard)', () => {
+  const golden = [
+    { mod: 'm1-roles', lang: 'en', q: 'What does the Scrum Master do?', expectedSource: 'Scrum Master' },
+    { mod: 'm1-roles', lang: 'en', q: 'What is the Product Owner?', expectedSource: 'Product Owner' },
+    { mod: 'm2-events', lang: 'en', q: 'How long is the Daily Scrum?', expectedSource: 'Daily Scrum' },
+    { mod: 'm2-events', lang: 'en', q: 'What is the Sprint Review?', expectedSource: 'Sprint Review' },
+    { mod: 'm3-metrics', lang: 'en', q: 'What is velocity?', expectedSource: 'Velocity' },
+  ];
+
+  // Deterministic (seeded) shuffle so the test is stable across CI runs.
+  function seededShuffle(arr, seed) {
+    const a = [...arr];
+    let s = seed;
+    for (let i = a.length - 1; i > 0; i -= 1) {
+      s = (s * 1103515245 + 12345) % 2147483648;
+      const j = s % (i + 1);
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function shuffleChunkSentences(chunk, seed) {
+    const sentences = chunk.text.split(/(?<=[.!?])\s+/).filter(Boolean);
+    return { ...chunk, text: seededShuffle(sentences, seed).join(' ') };
+  }
+
+  for (const { mod, lang, q, expectedSource } of golden) {
+    it(`"${q}" (${mod}/${lang}) keeps source "${expectedSource}" under chunk and sentence reordering`, () => {
+      const base = loadModule(mod, lang).knowledgeChunks;
+      for (let seed = 1; seed <= 5; seed += 1) {
+        const shuffledChunks = seededShuffle(base, seed).map((c) => shuffleChunkSentences(c, seed + 100));
+        const res = answerQuestion({ question: q, lang, chunks: shuffledChunks });
+        expect(res.source).toBe(expectedSource);
+      }
+    });
+  }
+});
+
+// SS-21: the compare branch used to gate on `score > 0` instead of the same
+// CHUNK_RELEVANCE_THRESHOLD as the main path, so almost any "compare"-shaped
+// question was answered "on topic" even when the module doesn't cover the
+// named subjects at all — and when it did resolve, the two halves could
+// silently duplicate (same chunk/sentence picked twice) with a hardcoded
+// confidence:0.6 regardless of how weak the match actually was.
+describe('compare-intent questions respect the topicality gate (SS-21)', () => {
+  it('does not let a comparison bypass the gate: neither subject is covered by this module', () => {
+    const chunks = loadModule('m1-roles', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'What is the difference between Sprint Review and Sprint Retrospective?',
+      lang: 'en',
+      chunks,
+    });
+    expect(res.topicality).toBe('off');
+    expect(res.source).toBeNull();
+    expect(res.sources).toEqual([]);
+  });
+
+  it('answers a "differ from" phrased comparison with two distinct, non-duplicated sources', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'How does the Daily Scrum differ from the Sprint Retrospective?',
+      lang: 'en',
+      chunks,
+    });
+    expect(res.topicality).toBe('on');
+    expect(res.intent).toBe('compare');
+    expect(res.sources.length).toBe(2);
+    expect(new Set(res.sources).size).toBe(2);
+    expect(res.answer.toLowerCase()).toContain('daily');
+    expect(res.answer.toLowerCase()).toContain('retrospective');
+  });
+
+  it('still composes a comparison from two concepts (existing behavior unchanged)', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'What is the difference between the Sprint Review and the Sprint Retrospective?',
+      lang: 'en',
+      chunks,
+    });
+    expect(res.topicality).toBe('on');
+    expect(res.intent).toBe('compare');
+    expect(res.sources.length).toBe(2);
+    expect(res.answer.toLowerCase()).toContain('review');
+    expect(res.answer.toLowerCase()).toContain('retrospective');
+  });
+
+  // Regression guard: the hardcoded confidence:0.6 and duplicated-source bug
+  // must not resurface across a small set of genuine compare questions.
+  it('never returns the old hardcoded confidence:0.6 or duplicated sources for a compare answer', () => {
+    const cases = [
+      { mod: 'm2-events', lang: 'en', q: 'What is the difference between the Sprint Review and the Sprint Retrospective?' },
+      { mod: 'm2-events', lang: 'en', q: 'How does the Daily Scrum differ from the Sprint Retrospective?' },
+      { mod: 'm1-roles', lang: 'en', q: 'What is the difference between the Product Owner and the Scrum Master?' },
+      { mod: 'm3-metrics', lang: 'en', q: 'What is the difference between Lead Time and Cycle Time?' },
+    ];
+    for (const { mod, lang, q } of cases) {
+      const chunks = loadModule(mod, lang).knowledgeChunks;
+      const res = answerQuestion({ question: q, lang, chunks });
+      if (res.intent === 'compare' && res.topicality === 'on') {
+        expect(res.confidence).not.toBe(0.6);
+        expect(new Set(res.sources).size).toBe(res.sources.length);
+      }
+    }
+  });
+});
+
+// SS-26: when a compare question's form can't be parsed by extractSubjects(),
+// the code used to fall back to `subjects = [bestChunk.title, runnerUp.title]`
+// — the module's own two top-ranked chunks for the WHOLE question, fed back
+// into bestChunkForSubject() as if the learner had named them. Because a
+// chunk title trivially matches itself, this "confirmed" the fabricated pair
+// with a deceptively confident score. Found live: "How does the Product
+// Backlog compare to the Sprint Backlog?" asked in the Events module (which
+// covers neither artifact) returned topicality:'on', confidence:0.51,
+// certainty:'high' about Sprint Planning/Sprint Review instead of an honest
+// off-topic or low-confidence answer.
+describe('compare branch never invents subjects from module-wide top chunks (SS-26)', () => {
+  it('no longer fabricates two sources for the exact reported case (present-tense "compare to", Events module)', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'How does the Product Backlog compare to the Sprint Backlog?',
+      lang: 'en',
+      chunks,
+    });
+    // The old bug's exact signature: two DIFFERENT, tautologically-confirmed
+    // headings and a deceptively confident, unhedged score.
+    expect(res.sources).not.toEqual(['Sprint Planning', 'Sprint Review']);
+    expect(res.confidence).not.toBe(0.51);
+    if (res.topicality === 'on') {
+      // The module only has incidental overlap (Sprint Planning mentions the
+      // Sprint Backlog as one of its outputs) — an honest answer must hedge.
+      expect(res.certainty).toBe('low');
+      expect(res.sources.length).toBe(1);
+    }
+  });
+
+  it('recognizes present-tense "compare(s) to" as a parseable comparison form and resolves two distinct, real sources', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'How does the Sprint Review compare to the Sprint Retrospective?',
+      lang: 'en',
+      chunks,
+    });
+    expect(res.topicality).toBe('on');
+    expect(res.intent).toBe('compare');
+    expect(res.sources).toEqual(['Sprint Review', 'Sprint Retrospective']);
+  });
+
+  it('recognizes present-tense "compare(s) with" as a parseable comparison form', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({
+      question: 'How does the Sprint Review compare with the Sprint Retrospective?',
+      lang: 'en',
+      chunks,
+    });
+    expect(res.topicality).toBe('on');
+    expect(res.intent).toBe('compare');
+    expect(res.sources).toEqual(['Sprint Review', 'Sprint Retrospective']);
+  });
+
+  // Property test: for a compare-intent question whose form extractSubjects()
+  // cannot parse at all (no "between X and Y", no COMPARE_SEPARATORS match,
+  // no "vs"/"versus"), the two-subject branch must never run — so `sources`
+  // can never come back as two fabricated headings, regardless of which
+  // module answers or how much incidental vocabulary overlap it has.
+  const modules = ['m1-roles', 'm2-events', 'm3-metrics', 'm4-artifacts', 'm5-capstone'];
+  for (const mod of modules) {
+    it(`"${mod}": an unparseable compare form never returns two fabricated sources`, () => {
+      const chunks = loadModule(mod, 'en').knowledgeChunks;
+      const res = answerQuestion({
+        question: 'Compare the Product Backlog and the Sprint Backlog in one sentence.',
+        lang: 'en',
+        chunks,
+      });
+      expect(res.sources.length).toBeLessThanOrEqual(1);
+    });
+  }
+});
+
+// SS-22: confidence is computed but was never exposed as anything a caller
+// could act on — a near-zero-confidence answer looked exactly as assertive
+// as a well-grounded one, and the "off" branch didn't even return the field.
+describe('certainty is derived from confidence and set on every branch (SS-22)', () => {
+  it('sets certainty on the off-topic branch', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const res = answerQuestion({ question: 'What is the weather tomorrow?', lang: 'en', chunks });
+    expect(res.topicality).toBe('off');
+    expect(res.certainty).toBe('low');
+  });
+
+  it('a strong, well-grounded on-topic answer is certainty:"high"', () => {
+    const chunks = loadModule('m2-events', 'en').knowledgeChunks;
+    const goodQuestions = [
+      'How long is the Daily Scrum?',
+      'What is the Sprint Review?',
+      'What is the Sprint Retrospective?',
+    ];
+    for (const q of goodQuestions) {
+      const res = answerQuestion({ question: q, lang: 'en', chunks });
+      expect(res.topicality).toBe('on');
+      expect(res.certainty).toBe('high');
+    }
+  });
+
+  it('a weak/ambiguous on-topic match is downgraded to certainty:"low" and hedged', () => {
+    // A minimal, deliberately ambiguous corpus: two headings share almost
+    // all of their vocabulary, so neither one wins by a clear margin.
+    const chunks = [
+      { title: 'Sprint Planning', text: 'Sprint Planning starts the Sprint and sets the Sprint Goal for the team.' },
+      { title: 'Sprint Review', text: 'Sprint Review happens near the end of the Sprint for the team and Goal.' },
+    ];
+    const res = answerQuestion({ question: 'Tell me about the Sprint and the Goal for the team.', lang: 'en', chunks });
+    expect(res.topicality).toBe('on');
+    expect(res.certainty).toBe('low');
+    expect(res.confidence).toBeLessThan(0.15);
   });
 });

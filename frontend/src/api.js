@@ -8,6 +8,9 @@ export function setToken(t) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+const REQUEST_TIMEOUT_MS = 20000;
+const TTS_TIMEOUT_MS = 30000;
+
 async function request(path, { method = 'GET', body, auth = false } = {}) {
   const headers = {};
   if (body) headers['Content-Type'] = 'application/json';
@@ -15,11 +18,20 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`/api${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      // Without this, a hung upstream (TTS/LLM) left the caller (and its
+      // "Thinking…"/loading UI) stuck forever — see SS-6.
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (e) {
+    if (e && e.name === 'TimeoutError') throw new Error('Request timed out. Please try again.');
+    throw e;
+  }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
@@ -49,22 +61,49 @@ export const api = {
 // Server-generated speech audio (WAV, binary) — bypasses the JSON-only
 // request() helper above. Throws on any non-2xx response so callers can fall
 // back to the browser's own Web Speech API.
-export async function fetchTtsAudio(text, voice) {
+// languageCode/gender are optional and only feed the backend's Google Cloud
+// TTS attempt (see backend/src/tts.js) — omitting them just skips straight
+// to the Gemini fallback, so older callers keep working unchanged.
+export async function fetchTtsAudio(text, voice, { languageCode, gender } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch('/api/tts', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ text, voice }),
-  });
-  // Include the status so callers can distinguish a quota rejection (429,
-  // surfaced by the backend as a 502 with detail "TTS 429") from a transient
-  // flake — retrying the former only burns more quota.
+  let res;
+  try {
+    res = await fetch('/api/tts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        text, voice, languageCode, gender,
+      }),
+      // A hung TTS call used to leave narration silently stuck forever —
+      // fail loudly instead so the caller's fallback path (Web Speech) runs.
+      signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
+    });
+  } catch (e) {
+    if (e && e.name === 'TimeoutError') {
+      // `detail` set here too (not just message) so ttsCircuit.classify(),
+      // which reads only `err.detail`, sees this the same way it sees the
+      // server's own "TTS budget exhausted" (SS-31).
+      const err = new Error('tts timed out');
+      err.detail = 'tts timed out';
+      throw err;
+    }
+    throw e;
+  }
+  // Attach status/detail as their own fields (not just baked into the
+  // message string) so callers can classify the failure off `detail` alone —
+  // the upstream provider's own "TTS 429"/"TTS 401" — instead of matching
+  // digits anywhere in the full message, which used to also catch our OWN
+  // 401 for an expired 12h session (that response has no `detail` at all)
+  // and wrongly treat it as a permanent upstream TTS failure (SS-20).
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.clone().json()).detail || ''; } catch { /* not JSON */ }
-    throw new Error(`tts failed ${res.status}${detail ? ` ${detail}` : ''}`);
+    const err = new Error(`tts failed ${res.status}${detail ? ` ${detail}` : ''}`);
+    err.status = res.status;
+    err.detail = detail;
+    throw err;
   }
   return res.blob();
 }

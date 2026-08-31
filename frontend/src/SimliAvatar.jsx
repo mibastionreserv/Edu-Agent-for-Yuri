@@ -36,11 +36,17 @@ const SimliAvatar = forwardRef(function SimliAvatar({
   const clientRef = useRef(null);
   const settledRef = useRef(false); // onReady must fire exactly once per start()
   const timersRef = useRef([]);
+  const unmountedRef = useRef(false);
   const [status, setStatus] = useState('idle'); // idle | connecting | live | error
   const [error, setError] = useState('');
 
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  // Outcome of the most recent settle() — read back by a second start() call
+  // on an already-connected/settled client (see below). A ref, not `status`,
+  // because useImperativeHandle's factory below closes over the render it
+  // was created in ([] deps) and would otherwise see a stale value.
+  const lastOkRef = useRef(false);
 
   function clearTimers() {
     timersRef.current.forEach((t) => clearInterval(t) || clearTimeout(t));
@@ -50,6 +56,7 @@ const SimliAvatar = forwardRef(function SimliAvatar({
   function settle(ok, message) {
     if (settledRef.current) return;
     settledRef.current = true;
+    lastOkRef.current = ok;
     clearTimers();
     if (ok) {
       setStatus('live');
@@ -60,26 +67,65 @@ const SimliAvatar = forwardRef(function SimliAvatar({
     if (onReadyRef.current) onReadyRef.current(ok);
   }
 
+  // Undoes listenToAudioElement()'s Web Audio graph: the SDK's own stop()
+  // only tears down the transport, so a torn-down-but-not-disconnected
+  // AudioWorkletNode keeps posting buffers into a closed WS forever.
+  async function disconnectAudioGraph(client) {
+    try {
+      if (client.audioWorklet) {
+        client.audioWorklet.port.onmessage = null;
+        client.audioWorklet.disconnect();
+      }
+    } catch { /* already gone */ }
+    try { client.sourceNode?.disconnect(); } catch { /* already gone */ }
+    try { await client.audioContext?.close(); } catch { /* already gone */ }
+  }
+
   function teardown() {
     clearTimers();
     if (clientRef.current) {
-      try { clientRef.current.stop(); } catch { /* already gone */ }
+      const client = clientRef.current;
       clientRef.current = null;
+      disconnectAudioGraph(client).finally(() => {
+        try { client.stop(); } catch { /* already gone */ }
+      });
     }
   }
 
-  useEffect(() => teardown, []);
+  useEffect(() => () => {
+    unmountedRef.current = true;
+    teardown();
+  }, []);
 
   useImperativeHandle(ref, () => ({
     // audioEl: the <audio> element playing our narration. Simli reads its
     // samples for lip-sync and relays the voice back on its own audio track.
     async start(audioEl) {
-      if (clientRef.current) return;
+      if (clientRef.current) {
+        // Idempotent: a caller may call start() again on an already
+        // connected/settled client — e.g. App.jsx resets its own "attempted
+        // once" latch on a module/lang change without this component
+        // remounting. If we silently returned here without replaying the
+        // outcome, a caller awaiting a freshly-built readiness promise (built
+        // on the assumption onReady WILL fire again) would hang forever
+        // (SS-33). Only replay if the earlier start() has itself already
+        // settled — an in-flight connection will still call the (always
+        // current) onReadyRef.current itself once it does.
+        if (settledRef.current && onReadyRef.current) onReadyRef.current(lastOkRef.current);
+        return;
+      }
       settledRef.current = false;
+      unmountedRef.current = false;
       setStatus('connecting');
       setError('');
       try {
         const { session_token: sessionToken } = await api.simliToken(faceId);
+
+        // The component may have unmounted while the token request was in
+        // flight. SimliClient only opens a connection inside start(), so as
+        // long as we bail before constructing it, nothing needs tearing
+        // down — this is what stops an orphaned live session from forming.
+        if (unmountedRef.current) return;
 
         const client = new SimliClient(
           sessionToken,

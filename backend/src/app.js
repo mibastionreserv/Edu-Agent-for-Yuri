@@ -1,7 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   validateCredentials, hashPassword, verifyPassword, issueToken, requireAuth,
 } from './auth.js';
@@ -14,6 +14,18 @@ import { createConversation, endConversation } from './tavus.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Dockerfile.render stamps this file with the image build time (SS-32); it
+// doesn't exist outside the container (local dev, tests), hence the try/catch.
+function readBuildTime() {
+  try {
+    return readFileSync(join(__dirname, '..', 'BUILD_TIME'), 'utf8').trim();
+  } catch {
+    return process.env.BUILD_TIME || 'unknown';
+  }
+}
+
+const builtAt = readBuildTime();
+
 // createApp(pool) -> configured express app. Pool is injected so tests can pass
 // an in-memory database.
 export function createApp(pool) {
@@ -21,7 +33,13 @@ export function createApp(pool) {
   app.use(express.json({ limit: '256kb' }));
 
   // --- health ---
-  app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+  // commit/builtAt let deploy tooling confirm a fresh Docker image actually
+  // landed on Render (SS-32), without needing server log access.
+  app.get('/api/health', (_req, res) => res.json({
+    status: 'ok',
+    commit: process.env.RENDER_GIT_COMMIT || 'unknown',
+    builtAt,
+  }));
 
   // --- static course assets (public course material, read-only) ---
   app.use('/content', express.static(contentDir(), { fallthrough: true }));
@@ -167,8 +185,8 @@ export function createApp(pool) {
 
     try {
       await pool.query(
-        'INSERT INTO questions (user_id, module_id, lang, question, answer, topicality) VALUES ($1,$2,$3,$4,$5,$6)',
-        [req.user.id, moduleId, mod.language, question.trim(), result.answer, result.topicality],
+        'INSERT INTO questions (user_id, module_id, lang, question, answer, topicality, provider, confidence, certainty) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        [req.user.id, moduleId, mod.language, question.trim(), result.answer, result.topicality, result.provider || null, result.confidence ?? null, result.certainty || null],
       );
     } catch {
       // Logging failure should not break the learner's flow.
@@ -244,23 +262,37 @@ export function createApp(pool) {
   });
 
   // --- Server-side TTS: gives the live Simli avatar real audio to lip-sync
-  // to (segment narration, the raise-hand prompt, Q&A answers). Reuses the
-  // Gemini key already configured for LLM_API_KEY — no new signup needed.
-  // Personas without a Simli face keep using the browser's Web Speech API and
-  // never call this; if it fails for any reason, the frontend falls back to
-  // Web Speech API too, so narration itself is never at risk.
+  // to (segment narration, the raise-hand prompt, Q&A answers). Tries Google
+  // Cloud TTS first (when languageCode/gender are supplied and
+  // GOOGLE_TTS_CREDENTIALS is configured), falling back to the Gemini key
+  // already configured for LLM_API_KEY — see tts.js. Personas without a
+  // Simli face keep using the browser's Web Speech API and never call this;
+  // if it fails for any reason, the frontend falls back to Web Speech API
+  // too, so narration itself is never at risk.
   app.post('/api/tts', requireAuth, async (req, res) => {
-    const { text, voice } = req.body || {};
+    const {
+      text, voice, languageCode, gender,
+    } = req.body || {};
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ error: 'text is required.' });
     }
     try {
-      const wav = await synthesizeSpeech(text.trim(), { voice: voice || undefined, pool });
+      const { wav, provider } = await synthesizeSpeech(text.trim(), {
+        voice: voice || undefined,
+        languageCode: languageCode || undefined,
+        gender: gender || undefined,
+        pool,
+      });
       res.set('Content-Type', 'audio/wav');
       // Narration for a given line never changes, so let the browser keep it
       // too — a re-listen or a back-and-forth between segments then costs no
       // request at all, on top of the server-side cache.
       res.set('Cache-Control', 'private, max-age=86400');
+      // Lets a caller (or the deployer/QA agent, via curl/network inspector)
+      // confirm which provider actually spoke this line, instead of only
+      // being able to infer it indirectly (or not at all) from audio quality
+      // — see the comment on synthesizeSpeech's return value in tts.js.
+      res.set('X-TTS-Provider', provider);
       return res.send(wav);
     } catch (err) {
       const detail = (err && err.message) || 'unknown';

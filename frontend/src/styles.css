@@ -127,7 +127,7 @@ input{font-family:inherit}
 .raise.lit{background:var(--coral);color:#fff;box-shadow:0 0 0 5px rgba(255,106,85,.25)}
 
 /* resizable split: presenter pane (left) + Q&A strip (right) */
-.split{display:flex;align-items:stretch;flex:1;min-height:0;overflow:hidden}
+.split{position:relative;display:flex;align-items:stretch;flex:1;min-height:0;overflow:hidden}
 .left-pane{flex:1 1 auto;min-width:0;min-height:0;display:flex;flex-direction:column}
 .left-pane .stage{flex:1;border-bottom:0;min-height:0;overflow:hidden}
 .divider{flex:0 0 8px;cursor:col-resize;background:transparent;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--line)}
@@ -154,6 +154,7 @@ input{font-family:inherit}
 .bubble.a.off{background:rgba(255,203,71,.1);border-color:rgba(255,203,71,.35);color:#f4e2b0}
 .bubble.a.errb{background:rgba(255,106,85,.12);border-color:rgba(255,106,85,.4);color:#ffcabf}
 .bubble .src{display:block;margin-top:6px;font-family:monospace;font-size:10.5px;color:var(--teal)}
+.bubble .src.low-certainty{color:#f4e2b0;font-family:inherit}
 .ask{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:12px}
 .mode{display:flex;gap:4px;background:rgba(0,0,0,.25);padding:3px;border-radius:9px;margin-bottom:10px;width:fit-content}
 .mode button{background:none;border:0;color:var(--muted-2);font-size:12px;padding:7px 12px;border-radius:7px}
@@ -188,9 +189,15 @@ input{font-family:inherit}
 .avatar-photo{position:relative;overflow:hidden;border-radius:14px;transition:transform .35s ease, box-shadow .2s ease}
 .avatar-photo img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .avatar-photo.listening{transform:rotate(-4deg)}
-.avatar-photo.speaking{box-shadow:0 0 0 4px rgba(23,183,166,.4)}
-.avatar-photo.speaking img{animation:ap-bob .44s ease-in-out infinite}
-@keyframes ap-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(1.5%)}}
+/* Bobs the whole container (photo + .ap-mouth together, as one rigid unit)
+   via the standalone `translate` property, not `transform` — so it composes
+   with .listening's `transform:rotate(-4deg)` instead of overwriting it, and
+   so the mouth overlay (a sibling of <img>, not a child) rides along with
+   the head instead of staying pinned to a fixed spot while the photo bobs
+   under it (previously animated on `img` alone, which left the mouth
+   visually detached from the face during speech). */
+.avatar-photo.speaking{box-shadow:0 0 0 4px rgba(23,183,166,.4); animation:ap-bob .44s ease-in-out infinite}
+@keyframes ap-bob{0%,100%{translate:0 0}50%{translate:0 1.5%}}
 .ap-mouth{position:absolute;width:15%;height:9%;border-radius:50%;pointer-events:none;
   background:radial-gradient(ellipse at center, rgba(80,32,28,.85) 0%, rgba(80,32,28,.45) 55%, rgba(80,32,28,0) 75%);
   filter:blur(1.5px);transform:translate(-50%,-30%) scaleY(.22);transform-origin:center;transition:transform .11s ease}
@@ -202,17 +209,31 @@ input{font-family:inherit}
 .presenter-dock[data-lipsync] .ap-mouth{
   transform:translate(-50%,-30%) scaleY(calc(.15 + .85 * var(--mouth, 0)));
   transition:transform .05s linear}
+/* Real-photo mouth crops (.ap-mouth.photo, e.g. Daniel) are much taller than
+   the default 9%-high gradient dot (25% vs 9% of the container). The -30%
+   Y-translate above centers the SMALL box acceptably, but on a box this much
+   taller it leaves the visual center ~20% of the box's own height (≈5% of
+   the whole avatar) below the mouthY landmark — squarely on the chin. -50%
+   is a true vertical center, keeping the landmark point (measured as the
+   real mouth centroid) at the middle of the box regardless of box height. */
+.ap-mouth.photo{transform:translate(-50%,-50%) scaleY(.22)}
+.ap-mouth.photo.open{transform:translate(-50%,-50%) scaleY(1)}
+.presenter-dock[data-lipsync] .ap-mouth.photo{
+  transform:translate(-50%,-50%) scaleY(calc(.15 + .85 * var(--mouth, 0)));
+  transition:transform .05s linear}
 .simli-avatar{position:relative;overflow:hidden;border-radius:14px;background:#0c1620}
 .simli-avatar video{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .25s ease}
 /* Persona photo shown beneath the video until live frames arrive. */
 .simli-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
   object-position:center top;display:block}
 
-/* Full-screen blocking loader shown while a live avatar (Simli/Tavus) is
-   connecting for the first time — SRS §avatar-readiness requires the whole
-   UI to stay locked out until the avatar is truly ready, so the learner
-   never sees a static/half-animated presenter mid-connect. */
-.avatar-loading-overlay{position:fixed;inset:0;z-index:80;display:flex;align-items:center;
+/* Blocking loader shown while a live avatar (Simli/Tavus) is connecting for
+   the first time — SRS §avatar-readiness requires the lesson UI to stay
+   locked out until the avatar is truly ready, so the learner never sees a
+   static/half-animated presenter mid-connect. Scoped to .split (the lesson
+   area), not the whole viewport, so the topbar ("← Modules") and the appbar
+   (language switcher) above it stay clickable while this is up (SS-5). */
+.avatar-loading-overlay{position:absolute;inset:0;z-index:80;display:flex;align-items:center;
   justify-content:center;background:rgba(11,17,22,.92);backdrop-filter:blur(2px)}
 .avatar-loading-overlay .state{padding:0;font-size:15px;color:#fff}
 .simli-overlay{position:absolute;inset:0;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;

@@ -91,6 +91,7 @@ export function loadModule(moduleId, lang) {
   return {
     id: m.id,
     title: m.title[use] || m.title.en,
+    order: m.order,
     language: use,
     estimatedMinutes: m.estimatedMinutes,
     assetBaseUrl: assetBase,
