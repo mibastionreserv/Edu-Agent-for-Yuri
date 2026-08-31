@@ -688,26 +688,30 @@ export function Classroom({
     const video = prerenderedVideoRef.current;
     if (!video) return false;
 
+    // NOT waiting for a 'canplay' event before calling play() on purpose —
+    // that deadlocked in production (confirmed live: readyState stuck at 0,
+    // canplay/error never fired, even though the file itself served fine).
+    // Some browser/automation contexts don't start actually fetching a
+    // media resource until play() is called, so waiting for it to finish
+    // loading before calling play() waits forever. play()'s own promise
+    // already tells us whether playback actually started; an 'error'
+    // listener below catches the case where it resolves but the resource
+    // turns out to be bad (e.g. a 404 clip for a not-yet-batch-generated
+    // segment) after the fact.
     const resumingSameClip = video.currentSrc.endsWith(videoUrl) && video.paused && video.currentTime > 0 && !video.ended;
     if (!resumingSameClip) {
-      const loaded = await new Promise((resolve) => {
-        const onCanPlay = () => { cleanup(); resolve(true); };
-        const onError = () => { cleanup(); resolve(false); };
-        function cleanup() {
-          video.removeEventListener('canplay', onCanPlay);
-          video.removeEventListener('error', onError);
-        }
-        video.addEventListener('canplay', onCanPlay, { once: true });
-        video.addEventListener('error', onError, { once: true });
-        video.src = videoUrl;
-        video.load();
-      });
-      if (!loaded) return false;
+      video.src = videoUrl;
     }
 
     setPrerenderedActive(true);
     stopSpeechRef.current = () => { video.pause(); };
     video.onended = () => { setPrerenderedActive(false); finish(); };
+    // Covers a 404 (segment not batch-generated yet) surfacing AFTER
+    // play() already resolved/returned true — by then speakWithMouth has
+    // already committed to this path, so this can't fall back to TTS the
+    // way a pre-play failure does. Ending cleanly instead of hanging
+    // "speaking" forever is the best available outcome here.
+    video.onerror = () => { setPrerenderedActive(false); finish(); };
 
     if (driveBoard) {
       progressTimerRef.current = setInterval(() => {
