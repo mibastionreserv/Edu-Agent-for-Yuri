@@ -8,7 +8,7 @@
 // that Daily room and broadcasts the narration text as a conversation.echo
 // app-message over the call's data channel. Tavus's own TTS engine and
 // Phoenix face-rendering engine handle voice synthesis and lip-synced video
-// entirely server-side on their end — unlike Mei-Lin/Simli, there's no
+// entirely server-side on their end — unlike Simli/prerendered-video personas, there's no
 // separate TTS call needed here (see tts.js for that other path).
 const TAVUS_API = 'https://tavusapi.com/v2';
 

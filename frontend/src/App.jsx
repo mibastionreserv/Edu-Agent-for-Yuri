@@ -36,20 +36,36 @@ function Toast({ msg }) {
 // course-content/avatars/ to get a talking-mouth overlay on it too.
 const PHOTO_LANDMARKS = {
   mira: { mouthX: 50, mouthY: 47 },
-  meilin: { mouthX: 50, mouthY: 56 },
+  // max: no measured mouth-landmark pass yet — the fallback photo path
+  // (see PRERENDERED_VIDEO_AVATARS below) still shows his photo, just
+  // without the little talking-mouth overlay, until one is measured.
 };
 
 // Personas backed by a live Simli video avatar (real WebRTC face + lip-sync)
 // instead of a static photo. Maps our avatar id -> Simli faceId.
 const SIMLI_FACES = {
-  meilin: '121cd5ae-7df7-4ea3-a389-401a9463db52', // "Edna" preset face
 };
+
+// Personas backed by pre-generated video clips, one per (lang, module,
+// segment) — see generate-avatar-videos.mjs at the repo root and
+// david-avatar-space/ (the SadTalker HF Space that renders them). Unlike
+// Simli/Tavus, there's no live service: a fixed lesson segment either has a
+// rendered clip or it doesn't. When it doesn't (module not batch-generated
+// yet, or this is Q&A/raise-hand text that was never fixed content to begin
+// with), speakWithMouth's prerendered branch just reports "not handled" and
+// falls through to the same server-TTS + photo-mouth-overlay path Mira uses
+// — see PERSONA_TTS_VOICE/PHOTO_LANDMARKS above for that fallback's voice.
+const PRERENDERED_VIDEO_AVATARS = { max: true };
+
+function prerenderedVideoUrl(avatarId, lang, moduleId, segmentId) {
+  return `/content/avatar-videos/${avatarId}/${lang}/${moduleId}/${segmentId}.mp4`;
+}
 
 // Personas backed by a live Tavus video avatar instead. Tavus's PAL for
 // Amara is pre-configured server-side in "echo" pipeline mode (see
 // backend/src/tavus.js) — Tavus's own TTS + Phoenix engine handle voice
 // synthesis and lip-synced rendering, so there's no local audio pipeline for
-// this persona at all, unlike Simli/Mei-Lin.
+// this persona at all, unlike Simli/prerendered-video personas.
 // 'amara' stays as an alias so previously saved progress (avatar_id) keeps
 // working — the persona is now presented as Yuri, matching the male Tavus
 // stock replica (r92debe21318) that actually renders the live video.
@@ -63,11 +79,20 @@ const TAVUS_PERSONAS = { yuri: true, amara: true };
 //
 // Mira keeps Gacrux: it was the single hardcoded voice until now, so her
 // existing cache entries stay valid instead of being re-synthesized.
+// Max needs an entry too even though his lesson-segment lines normally
+// play as prerendered video: this voice is what he falls back to for
+// anything NOT prerendered (Q&A answers, the raise-hand prompt, or a
+// segment the batch job hasn't reached yet).
 // (Tavus personas are absent on purpose — Tavus does its own TTS.)
 const PERSONA_TTS_VOICE = {
   mira: 'Gacrux', // warm, measured — the default coach
   daniel: 'Charon', // lower, informative male
-  meilin: 'Leda', // brighter, energetic female
+  // firm, clear male. NOT the same voice as his prerendered clips (those
+  // were synthesized with Google Cloud TTS, a separate system/catalog from
+  // this Gemini-based fallback) — so Max sounds slightly different in Q&A
+  // than in lesson narration. Acceptable for now; picking a closer-sounding
+  // Gemini voice would need actually listening to both side by side.
+  max: 'Orus',
 };
 const DEFAULT_TTS_VOICE = 'Gacrux';
 
@@ -188,6 +213,16 @@ function Classroom({
   const simliFaceId = SIMLI_FACES[avatarId];
   const simliRef = useRef(null);
   const simliAttemptedRef = useRef(false);
+
+  // Prerendered-video persona (Max): the <video> element showing lesson
+  // segments that already have a batch-generated clip. prerenderedActive
+  // switches the presenter-dock render between this element and the normal
+  // Avatar photo — only true while such a clip is actually playing, so
+  // Q&A/raise-hand lines (which always fall through to the photo+TTS path)
+  // show the ordinary photo, not a stale last frame.
+  const usesPrerenderedVideo = Boolean(PRERENDERED_VIDEO_AVATARS[avatarId]);
+  const prerenderedVideoRef = useRef(null);
+  const [prerenderedActive, setPrerenderedActive] = useState(false);
   // True once the Simli connection has actually reported 'live' — used to
   // decide whether narration still needs to wait (and show the blocking
   // loader) or can start instantly against the already-connected avatar.
@@ -237,7 +272,7 @@ function Classroom({
   const steps = useMemo(() => (segment && segment.steps) || [], [segment]);
   // Narration text is authored once and reused for every presenter; swap the
   // {{presenter}} token for whichever avatar the learner actually picked so
-  // Mei-Lin doesn't introduce herself as "Mira".
+  // Max doesn't introduce himself as "Mira".
   const presenterText = (text) => (text || '').split('{{presenter}}').join(presenterName);
 
   useEffect(() => {
@@ -294,7 +329,9 @@ function Classroom({
     const from = lastCharRef.current;
     setPaused(false);
     if (!full || from >= full.length) return;
-    speakWithMouth(full.slice(from), { driveBoard: true, charOffset: from, fullLen: full.length });
+    speakWithMouth(full.slice(from), {
+      driveBoard: true, charOffset: from, fullLen: full.length, segmentId: segment && segment.id,
+    });
   }
 
   // Ends the live mic capture (speech recognition only — it manages its own
@@ -426,6 +463,65 @@ function Classroom({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
+
+  // Plays a pre-generated lesson-segment clip instead of synthesizing
+  // speech — its audio track already has the persona's voice baked in by
+  // the batch job that made it (see generate-avatar-videos.mjs at the repo
+  // root). Returns false — meaning "not handled, fall through to the
+  // normal server-TTS + photo path" — when the clip 404s: modules the
+  // batch hasn't reached yet, or this text was never a fixed lesson
+  // segment to begin with (Q&A answers, the raise-hand prompt).
+  //
+  // Board-reveal progress is driven directly off video.currentTime /
+  // video.duration rather than the CHARS_PER_MS time-estimate the other
+  // paths use — the video's own playback position is exact, not a guess,
+  // and (unlike Web Speech, which restarts an utterance from scratch on
+  // resume) resuming here just un-pauses the same element from wherever it
+  // left off, so currentTime is always the segment's true absolute
+  // position — no charOffset arithmetic needed.
+  async function speakViaPrerenderedVideo(videoUrl, { textLen, driveBoard, nSteps, finish }) {
+    const video = prerenderedVideoRef.current;
+    if (!video) return false;
+
+    const resumingSameClip = video.currentSrc.endsWith(videoUrl) && video.paused && video.currentTime > 0 && !video.ended;
+    if (!resumingSameClip) {
+      const loaded = await new Promise((resolve) => {
+        const onCanPlay = () => { cleanup(); resolve(true); };
+        const onError = () => { cleanup(); resolve(false); };
+        function cleanup() {
+          video.removeEventListener('canplay', onCanPlay);
+          video.removeEventListener('error', onError);
+        }
+        video.addEventListener('canplay', onCanPlay, { once: true });
+        video.addEventListener('error', onError, { once: true });
+        video.src = videoUrl;
+        video.load();
+      });
+      if (!loaded) return false;
+    }
+
+    setPrerenderedActive(true);
+    stopSpeechRef.current = () => { video.pause(); };
+    video.onended = () => { setPrerenderedActive(false); finish(); };
+
+    if (driveBoard) {
+      progressTimerRef.current = setInterval(() => {
+        const dur = video.duration || 0;
+        if (dur <= 0) return;
+        const estAbs = (video.currentTime / dur) * textLen;
+        lastCharRef.current = Math.max(lastCharRef.current, Math.min(estAbs, textLen * 0.97));
+        setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
+      }, 200);
+    }
+
+    try {
+      await video.play();
+    } catch {
+      setPrerenderedActive(false);
+      return false;
+    }
+    return true;
+  }
 
   // Broadcasts narration text to the live Tavus avatar and waits for Tavus's
   // own conversation.stopped_speaking event before resolving — that's the
@@ -695,7 +791,7 @@ function Classroom({
   }
 
   async function speakWithMouth(text, {
-    onEnd, driveBoard, charOffset = 0, fullLen,
+    onEnd, driveBoard, charOffset = 0, fullLen, segmentId,
   } = {}) {
     const myGen = ++speechGenRef.current;
     setSpeaking(true);
@@ -720,6 +816,19 @@ function Classroom({
       if (driveBoard && !wasInterrupted) { setRevealed(nSteps); lastCharRef.current = textLen; }
       if (onEnd) onEnd();
     };
+
+    // Max: try a batch-pregenerated clip first — only possible for an actual
+    // fixed lesson segment (segmentId is only ever passed from play(), never
+    // from Q&A/raise-hand call sites). Falls through to the normal
+    // server-TTS + photo path below when there's no clip yet.
+    if (usesPrerenderedVideo && segmentId) {
+      const handled = await speakViaPrerenderedVideo(
+        prerenderedVideoUrl(avatarId, lang, moduleId, segmentId),
+        { textLen, driveBoard, nSteps, finish },
+      );
+      if (handled) return;
+      if (myGen !== speechGenRef.current) return; // superseded while we tried
+    }
 
     // Everyone except Tavus personas gets real, server-synthesized speech:
     // Simli personas need it as the lip-sync audio source, and photo
@@ -793,7 +902,7 @@ function Classroom({
     fullTextRef.current = full;
     lastCharRef.current = 0;
     setPaused(false);
-    speakWithMouth(full, { driveBoard: true });
+    speakWithMouth(full, { driveBoard: true, segmentId: segment.id });
   }
   function togglePlay() {
     // Resuming the decode context needs a user gesture, so it happens
@@ -1014,6 +1123,25 @@ function Classroom({
                     }
                   }}
                 />
+              ) : usesPrerenderedVideo ? (
+                /* Max: photo underneath, batch-pregenerated clip revealed
+                   on top only while one is actually playing (prerenderedActive)
+                   — same poster-under-video idea SimliAvatar uses, so Q&A/
+                   raise-hand lines (no clip for those) fall back to showing
+                   the plain photo instead of a stale last frame. */
+                <div style={{ position: 'relative', width: 150, height: 150 * 1.15 }}>
+                  <Avatar id={avatarId} mouth={mouth} state={avatarState} size={150} />
+                  <video
+                    ref={prerenderedVideoRef}
+                    playsInline
+                    style={{
+                      position: 'absolute', inset: 0, width: '100%', height: '100%',
+                      objectFit: 'cover', borderRadius: 'inherit',
+                      opacity: prerenderedActive ? 1 : 0,
+                      transition: 'opacity .15s ease',
+                    }}
+                  />
+                </div>
               ) : (
                 <Avatar id={avatarId} mouth={mouth} state={avatarState} size={150} />
               )}
@@ -1024,7 +1152,9 @@ function Classroom({
                   personas its Web Audio routing feeds the live avatar's
                   track; for photo personas it feeds the amplitude-driven
                   mouth analyser. Tavus personas don't use it: Tavus does its
-                  own TTS server-side. */}
+                  own TTS server-side. Prerendered-video personas (Max) DO
+                  still mount this: it's their fallback path for anything
+                  without a pregenerated clip (Q&A, raise-hand). */}
               {!isTavus && <audio ref={narrationAudioRef} style={{ display: 'none' }} />}
             </div>
           </div>

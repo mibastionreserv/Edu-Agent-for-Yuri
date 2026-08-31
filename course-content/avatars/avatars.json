@@ -82,24 +82,24 @@
       }
     },
     {
-      "id": "meilin",
+      "id": "max",
       "name": {
-        "en": "Mei-Lin",
-        "de": "Mei-Lin",
-        "it": "Mei-Lin",
-        "el": "Mei-Lin"
+        "en": "Max",
+        "de": "Max",
+        "it": "Max",
+        "el": "Max"
       },
       "role": {
         "en": "The Guide",
-        "de": "Die Begleiterin",
+        "de": "Der Begleiter",
         "it": "La guida",
-        "el": "Η οδηγός"
+        "el": "Ο οδηγός"
       },
       "desc": {
-        "en": "A realistic 3D avatar.",
-        "de": "Ein realistischer 3D-Avatar.",
-        "it": "Un avatar 3D realistico.",
-        "el": "Ένα ρεαλιστικό 3D άβαταρ."
+        "en": "A realistic talking-head avatar.",
+        "de": "Ein realistischer Talking-Head-Avatar.",
+        "it": "Un avatar realistico con testa parlante.",
+        "el": "Ένα ρεαλιστικό άβαταρ ομιλίας."
       },
       "voice": {
         "en": "en-US",
