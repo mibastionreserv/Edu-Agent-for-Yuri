@@ -684,7 +684,9 @@ export function Classroom({
   // resume) resuming here just un-pauses the same element from wherever it
   // left off, so currentTime is always the segment's true absolute
   // position — no charOffset arithmetic needed.
-  async function speakViaPrerenderedVideo(videoUrl, { textLen, driveBoard, nSteps, finish }) {
+  async function speakViaPrerenderedVideo(videoUrl, {
+    textLen, driveBoard, nSteps, finish, myGen,
+  }) {
     const video = prerenderedVideoRef.current;
     if (!video) return false;
 
@@ -698,20 +700,45 @@ export function Classroom({
     // listener below catches the case where it resolves but the resource
     // turns out to be bad (e.g. a 404 clip for a not-yet-batch-generated
     // segment) after the fact.
-    const resumingSameClip = video.currentSrc.endsWith(videoUrl) && video.paused && video.currentTime > 0 && !video.ended;
+    //
+    // Resume in place — don't reset src — whenever this exact clip is
+    // already loaded and not finished, whether merely paused (a real Pause
+    // click) OR already actively playing. The latter matters because this
+    // segment's play() is observed firing more than once for one click in
+    // production (Network tab showed 3 requests for the same clip) — a
+    // second overlapping call reassigning .src on an already-playing video
+    // would abort and restart it from 0, which is exactly the "second
+    // click restarts from the beginning" symptom that was reported.
+    const sameClipLoaded = video.currentSrc.endsWith(videoUrl);
+    const resumingSameClip = sameClipLoaded && !video.ended && (video.paused ? video.currentTime > 0 : true);
     if (!resumingSameClip) {
       video.src = videoUrl;
     }
 
     setPrerenderedActive(true);
     stopSpeechRef.current = () => { video.pause(); };
-    video.onended = () => { setPrerenderedActive(false); finish(); };
+    // myGen guard: a stale/superseded invocation's onended/onerror must not
+    // fire finish() (which flips speaking back to false) once a newer call
+    // has taken over — same discipline speakWithMouth's own finish() already
+    // applies to onEnd. Without this, the symptom was speaking flipping back
+    // to false (Play button never shows Pause) while the video itself kept
+    // right on playing underneath, since only pauseNarration's
+    // stopSpeechRef.current() actually pauses the element.
+    video.onended = () => {
+      if (myGen !== speechGenRef.current) return;
+      setPrerenderedActive(false);
+      finish();
+    };
     // Covers a 404 (segment not batch-generated yet) surfacing AFTER
     // play() already resolved/returned true — by then speakWithMouth has
     // already committed to this path, so this can't fall back to TTS the
     // way a pre-play failure does. Ending cleanly instead of hanging
     // "speaking" forever is the best available outcome here.
-    video.onerror = () => { setPrerenderedActive(false); finish(); };
+    video.onerror = () => {
+      if (myGen !== speechGenRef.current) return;
+      setPrerenderedActive(false);
+      finish();
+    };
 
     if (driveBoard) {
       progressTimerRef.current = setInterval(() => {
@@ -1077,7 +1104,9 @@ export function Classroom({
     if (usesPrerenderedVideo && segmentId) {
       const handled = await speakViaPrerenderedVideo(
         prerenderedVideoUrl(avatarId, lang, moduleId, segmentId),
-        { textLen, driveBoard, nSteps, finish },
+        {
+          textLen, driveBoard, nSteps, finish, myGen,
+        },
       );
       if (handled) return;
       if (myGen !== speechGenRef.current) return; // superseded while we tried
