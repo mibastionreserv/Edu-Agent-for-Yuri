@@ -425,7 +425,34 @@ export function Classroom({
     let alive = true;
     setLoading(true); setError('');
     api.module(moduleId, lang)
-      .then((m) => { if (alive) { setMod(m); setLoading(false); } })
+      .then(async (m) => {
+        if (!alive) return;
+        setMod(m);
+        // Photo personas (Mira, Daniel, ...): the FIRST segment's TTS line
+        // takes real, uncached synthesis time (several seconds), and
+        // speakViaServerTts's own blocking loader only appears once the
+        // learner has already pressed Play — that read as the button itself
+        // being slow/stuck, on top of the module having just loaded. Pay
+        // that cost here instead, behind the SAME "Loading…" spinner already
+        // shown for the module fetch, so Play is instant once the classroom
+        // is actually visible. Max's clips stream progressively (HTTP Range)
+        // and don't need this — the background prefetch effect below is
+        // enough of a head start for them, and Tavus has its own
+        // avatarConnecting-gated connect flow.
+        const first = m && m.segments && m.segments[0];
+        if (first && !usesPrerenderedVideo && !isTavus && canAttemptTts()) {
+          try {
+            await fetchTtsAudio(presenterText(first.text), ttsVoice, {
+              languageCode: langTag(lang), gender: personaGender.toUpperCase(),
+            });
+            if (alive) noteTtsSuccess();
+          } catch (e) {
+            if (alive) noteTtsFailure(e);
+          }
+          photoTtsWarmedRef.current = true;
+        }
+        if (alive) setLoading(false);
+      })
       .catch((e) => { if (alive) { setError(e.message || ui.errorGeneric); setLoading(false); } });
     return () => {
       alive = false; stopAll();
@@ -667,6 +694,11 @@ export function Classroom({
       fetch(prerenderedVideoUrl(avatarId, lang, moduleId, segment.id)).catch(() => {});
       return undefined;
     }
+    // Segment 0 was already prefetched (and photoTtsWarmedRef latched) by the
+    // module-load effect above, right after `loading` turns false — this
+    // effect re-fires on that very transition and would otherwise send a
+    // second, redundant TTS request for the exact same text.
+    if (seg === 0 && photoTtsWarmedRef.current) return undefined;
     if (isTavus || !canAttemptTts()) return undefined;
     let alive = true;
     fetchTtsAudio(presenterText(segment.text), ttsVoice, {
