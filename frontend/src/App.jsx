@@ -537,6 +537,25 @@ export function Classroom({
     if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
     cancelSpeech();
     setSpeaking(false); setMouth(false); setPaused(true);
+    // Photo personas: resumeNarration() below re-synthesizes the exact
+    // TEXT SLICE from this pause point (there is no native seek — Web
+    // Speech has none, and the server-TTS <audio> element's own audio is
+    // for the FULL segment, not this sub-range), which is a brand-new
+    // string the TTS cache has never seen — every resume paid a full,
+    // uncached synthesis (several seconds) even though the module-load
+    // prefetch already warmed the full segment. Warm THIS exact slice now,
+    // in the background, so a resume a moment later is a cache hit instead.
+    // Max has his own resume-in-place via the video element and doesn't
+    // need this.
+    if (!usesPrerenderedVideo && !isTavus && canAttemptTts()) {
+      const full = fullTextRef.current;
+      const from = lastCharRef.current;
+      if (full && from < full.length) {
+        fetchTtsAudio(full.slice(from), ttsVoice, {
+          languageCode: langTag(lang), gender: personaGender.toUpperCase(),
+        }).then(noteTtsSuccess).catch(noteTtsFailure);
+      }
+    }
   }
 
   function resumeNarration() {
