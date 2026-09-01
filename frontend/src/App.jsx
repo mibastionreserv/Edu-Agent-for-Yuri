@@ -137,7 +137,7 @@ const DEFAULT_TTS_VOICE = 'Gacrux';
 // an entry here that fallback silently defaulted to 'female' for Yuri, the
 // male persona (SS-34).
 const PERSONA_GENDER = {
-  mira: 'female', daniel: 'male', meilin: 'female', yuri: 'male', amara: 'male',
+  mira: 'female', daniel: 'male', max: 'male', yuri: 'male', amara: 'male',
 };
 
 function Avatar({ id, mouth, state, size = 180 }) {
