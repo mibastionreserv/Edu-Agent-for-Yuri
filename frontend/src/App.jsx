@@ -364,15 +364,15 @@ export function Classroom({
   const simliRef = useRef(null);
   const simliAttemptedRef = useRef(false);
 
-  // Prerendered-video persona (Max): the <video> element showing lesson
-  // segments that already have a batch-generated clip. prerenderedActive
-  // switches the presenter-dock render between this element and the normal
-  // Avatar photo — only true while such a clip is actually playing, so
-  // Q&A/raise-hand lines (which always fall through to the photo+TTS path)
-  // show the ordinary photo, not a stale last frame.
+  // Prerendered-video persona (Max): the <video> element is the ONLY
+  // presenter-dock element rendered for him — never swapped for the Avatar
+  // photo (see the presenter-dock JSX below). Q&A/raise-hand lines with no
+  // batch-generated clip just leave it paused, showing whatever frame it
+  // last rested on — a component swap to a differently-cropped photo was
+  // the actual source of the visible "avatar loading" jump reported for
+  // those lines, not the TTS wait itself.
   const usesPrerenderedVideo = Boolean(PRERENDERED_VIDEO_AVATARS[avatarId]);
   const prerenderedVideoRef = useRef(null);
-  const [prerenderedActive, setPrerenderedActive] = useState(false);
   // True once the Simli connection has actually reported 'live' — used to
   // decide whether narration still needs to wait (and show the blocking
   // loader) or can start instantly against the already-connected avatar.
@@ -826,7 +826,6 @@ export function Classroom({
       video.src = videoUrl;
     }
 
-    setPrerenderedActive(true);
     stopSpeechRef.current = () => { video.pause(); };
     // myGen guard: a stale/superseded invocation's onended/onerror must not
     // fire finish() (which flips speaking back to false) once a newer call
@@ -837,7 +836,6 @@ export function Classroom({
     // stopSpeechRef.current() actually pauses the element.
     video.onended = () => {
       if (myGen !== speechGenRef.current) return;
-      setPrerenderedActive(false);
       finish();
     };
     // Covers a 404 (segment not batch-generated yet) surfacing AFTER
@@ -847,7 +845,6 @@ export function Classroom({
     // "speaking" forever is the best available outcome here.
     video.onerror = () => {
       if (myGen !== speechGenRef.current) return;
-      setPrerenderedActive(false);
       finish();
     };
 
@@ -864,7 +861,6 @@ export function Classroom({
     try {
       await video.play();
     } catch {
-      setPrerenderedActive(false);
       return false;
     }
     // Every other playback path raises `speaking` once real playback starts
@@ -960,8 +956,11 @@ export function Classroom({
     // hasn't finished (or was skipped) by the time narration starts. Photo
     // personas get the same blocking loader while their FIRST voice line is
     // being synthesized, so the learner never watches a silent, motionless
-    // (or worse, twitching) photo waiting for audio.
-    const photoOverlay = !simliFaceId && !photoTtsWarmedRef.current;
+    // (or worse, twitching) photo waiting for audio. Max doesn't need it:
+    // this path only runs for him on a Q&A/raise-hand line with no
+    // prerendered clip, and his <video> element just sits paused on
+    // whatever frame it's already showing — nothing to twitch.
+    const photoOverlay = !simliFaceId && !usesPrerenderedVideo && !photoTtsWarmedRef.current;
     // Once Simli's outcome is known (simliSettledRef), don't raise the
     // blocking loader again on later lines just because it never reached
     // 'live' — a permanently failed connection must not re-block every
@@ -1653,21 +1652,22 @@ export function Classroom({
                   }}
                 />
               ) : usesPrerenderedVideo ? (
-                /* Max: photo underneath, batch-pregenerated clip revealed
-                   on top only while one is actually playing (prerenderedActive)
-                   — same poster-under-video idea SimliAvatar uses, so Q&A/
-                   raise-hand lines (no clip for those) fall back to showing
-                   the plain photo instead of a stale last frame. */
+                /* Max: always this ONE <video> element, never swapped for
+                   the Avatar photo. A Q&A/raise-hand line with no
+                   batch-generated clip just leaves it paused (poster image
+                   before anything has ever loaded, otherwise whatever frame
+                   it last rested on) instead of jumping to a differently-
+                   cropped photo — that component swap, not the TTS wait
+                   itself, was the actual source of the "avatar loading"
+                   jump learners saw on those lines. */
                 <div style={{ position: 'relative', width: 150, height: 150 * 1.15 }}>
-                  <Avatar id={avatarId} mouth={mouth} state={avatarState} size={150} />
                   <video
                     ref={prerenderedVideoRef}
                     playsInline
+                    poster={PHOTO_SRC_OVERRIDES[avatarId] || `/content/avatars/${avatarId}.jpg`}
                     style={{
-                      position: 'absolute', inset: 0, width: '100%', height: '100%',
+                      width: '100%', height: '100%',
                       objectFit: 'cover', borderRadius: 'inherit',
-                      opacity: prerenderedActive ? 1 : 0,
-                      transition: 'opacity .15s ease',
                     }}
                   />
                 </div>
