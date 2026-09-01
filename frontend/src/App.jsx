@@ -1422,6 +1422,16 @@ export function Classroom({
       if (resumed) return;
       resumed = true;
       setPaused(false);
+      // Max: no segmentId was ever passed here, so speakWithMouth always
+      // skipped the prerendered-video path for the resumed segment and fell
+      // back to the static photo + Q&A voice — silently losing the video
+      // for the rest of the segment even though the bridge phrase just
+      // promised to "continue where I stopped". The video has no seek
+      // (unlike the char-offset tracking below, which only applies to
+      // synthesized audio), so the closest honest approximation is
+      // replaying this segment's clip from the start — still animated,
+      // just not resumed mid-sentence.
+      if (usesPrerenderedVideo) { play(); return; }
       // The remembered position is only an ESTIMATE while the browser voice
       // is used (Web Speech reports no reliable progress), so it can run
       // past the real end of the text. In that case replay this segment
