@@ -655,6 +655,29 @@ export function Classroom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
+  // Prefetch the CURRENT segment's actual content — Max's video, or the real
+  // TTS line for photo personas — as soon as it is known, instead of only
+  // starting that fetch the moment the learner presses Play. The probe above
+  // warms a DIFFERENT, fixed phrase (resumeAfterQuestion, for the raise-hand
+  // bridge) and only checks TTS health; it does nothing for this segment's
+  // own text. Re-fires on every segment change so Next/Prev stays warm too.
+  useEffect(() => {
+    if (loading || !segment) return undefined;
+    if (usesPrerenderedVideo) {
+      fetch(prerenderedVideoUrl(avatarId, lang, moduleId, segment.id)).catch(() => {});
+      return undefined;
+    }
+    if (isTavus || !canAttemptTts()) return undefined;
+    let alive = true;
+    fetchTtsAudio(presenterText(segment.text), ttsVoice, {
+      languageCode: langTag(lang), gender: personaGender.toUpperCase(),
+    })
+      .then(() => { if (alive) noteTtsSuccess(); })
+      .catch((e) => { if (alive) noteTtsFailure(e); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, segment && segment.id]);
+
   useEffect(() => {
     if (loading || !mod) return;
     if (simliFaceId) {
