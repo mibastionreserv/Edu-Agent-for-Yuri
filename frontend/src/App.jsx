@@ -293,6 +293,16 @@ export function Classroom({
   const [avatarConnecting, setAvatarConnecting] = useState(false);
   const mouthTimer = useRef(null);
   const stopSpeechRef = useRef(null);
+  // Set ONLY by the server-TTS <audio> path (speakViaServerTts) alongside
+  // stopSpeechRef — a true, in-place pause/resume for the SAME already-
+  // loaded audio (el.pause()/el.play(), no re-synthesis), the same idea
+  // speakViaPrerenderedVideo already uses for Max's video element. Every
+  // OTHER path (Web Speech, Tavus, prerendered video) leaves these null, so
+  // pauseNarration()/resumeNarration() fall back to their old behavior
+  // there — Web Speech genuinely has no reliable native pause/resume, and
+  // the other two have their own resume mechanisms entirely.
+  const quickPauseRef = useRef(null);
+  const quickResumeRef = useRef(null);
   // Bumped on every new speakWithMouth() call and on any pause/stop. Async
   // speech attempts capture the value at their start and re-check it after
   // each await; if it no longer matches, a newer attempt has taken over (or
@@ -528,40 +538,56 @@ export function Classroom({
   // key bit: it tells the in-flight speakWithMouth's onEnd handler (which
   // *will* still fire once cancelSpeech() below interrupts the utterance)
   // that this wasn't a natural finish, so it must not clobber lastCharRef.
-  function pauseNarration() {
+  // `soft`: true only from the Play/Pause toggle itself — the one caller
+  // that later wants THIS EXACT line back via resumeNarration(), never a
+  // different one. raiseHand()/submitQuestion() always pass the default
+  // (hard stop): they immediately speak something else (the raise-hand
+  // prompt, a Q&A answer), so there is nothing here worth keeping alive —
+  // and a soft pause left behind would leave this call's `done` promise
+  // (see speakViaServerTts) permanently unresolved once a fresh
+  // speakWithMouth() call for that other line takes over stopSpeechRef.
+  function pauseNarration(soft = false) {
     interruptedRef.current = true;
-    speechGenRef.current += 1;
     if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
     if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
     if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
-    if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
-    cancelSpeech();
-    setSpeaking(false); setMouth(false); setPaused(true);
-    // Photo personas: resumeNarration() below re-synthesizes the exact
-    // TEXT SLICE from this pause point (there is no native seek — Web
-    // Speech has none, and the server-TTS <audio> element's own audio is
-    // for the FULL segment, not this sub-range), which is a brand-new
-    // string the TTS cache has never seen — every resume paid a full,
-    // uncached synthesis (several seconds) even though the module-load
-    // prefetch already warmed the full segment. Warm THIS exact slice now,
-    // in the background, so a resume a moment later is a cache hit instead.
-    // Max has his own resume-in-place via the video element and doesn't
-    // need this.
-    if (!usesPrerenderedVideo && !isTavus && canAttemptTts()) {
-      const full = fullTextRef.current;
-      const from = lastCharRef.current;
-      if (full && from < full.length) {
-        fetchTtsAudio(full.slice(from), ttsVoice, {
-          languageCode: langTag(lang), gender: personaGender.toUpperCase(),
-        }).then(noteTtsSuccess).catch(noteTtsFailure);
+    if (soft && quickPauseRef.current) {
+      // True pause: the same already-loaded <audio> element just pauses in
+      // place (mirrors speakViaPrerenderedVideo's video element for Max) —
+      // nothing to re-fetch, so resumeNarration() below can resume
+      // instantly instead of re-synthesizing this line from scratch.
+      quickPauseRef.current();
+    } else {
+      speechGenRef.current += 1;
+      if (stopSpeechRef.current) { stopSpeechRef.current(); stopSpeechRef.current = null; }
+      cancelSpeech();
+      // Web Speech (the only path with no quick-pause) has no native seek,
+      // so resuming means re-synthesizing text.slice(from) below — a string
+      // the TTS cache has never seen. Warm it in the background now, so a
+      // resume a moment later is normally a cache hit instead of paying a
+      // full, several-second synthesis again.
+      if (!usesPrerenderedVideo && !isTavus && canAttemptTts()) {
+        const full = fullTextRef.current;
+        const from = lastCharRef.current;
+        if (full && from < full.length) {
+          fetchTtsAudio(full.slice(from), ttsVoice, {
+            languageCode: langTag(lang), gender: personaGender.toUpperCase(),
+          }).then(noteTtsSuccess).catch(noteTtsFailure);
+        }
       }
     }
+    setSpeaking(false); setMouth(false); setPaused(true);
   }
 
   function resumeNarration() {
+    setPaused(false);
+    if (quickResumeRef.current) {
+      interruptedRef.current = false;
+      quickResumeRef.current();
+      return;
+    }
     const full = fullTextRef.current;
     const from = lastCharRef.current;
-    setPaused(false);
     if (!full || from >= full.length) return;
     speakWithMouth(full.slice(from), {
       driveBoard: true, charOffset: from, fullLen: full.length, segmentId: segment && segment.id,
@@ -1070,13 +1096,17 @@ export function Classroom({
     // Amplitude-driven mouth for photo personas: sample the analyser every
     // frame and write the level into a CSS variable on the presenter dock —
     // the mouth overlay's scaleY follows the actual loudness of the voice.
+    // Both start*() helpers are also reused by quickResumeRef below, so a
+    // true in-place resume (no re-fetch) restarts exactly what a fresh
+    // start would have.
     let mouthRafId = null;
     const dockEl = presenterDockRef.current;
     const stopMouthLoop = () => {
       if (mouthRafId) { cancelAnimationFrame(mouthRafId); mouthRafId = null; }
       if (dockEl) dockEl.style.setProperty('--mouth', '0');
     };
-    if (!simliFaceId && envelope && dockEl) {
+    const startMouthLoop = () => {
+      if (simliFaceId || !envelope || !dockEl) return;
       dockEl.setAttribute('data-lipsync', '1');
       const tick = () => {
         // Read the precomputed loudness at the element's real playback
@@ -1087,7 +1117,33 @@ export function Classroom({
         mouthRafId = requestAnimationFrame(tick);
       };
       mouthRafId = requestAnimationFrame(tick);
-    }
+    };
+    const startProgressTimer = () => {
+      if (!driveBoard) return;
+      progressTimerRef.current = setInterval(() => {
+        if (!el.duration) return;
+        const abs = charOffset + (el.currentTime / el.duration) * Math.max(0, textLen - charOffset);
+        lastCharRef.current = Math.max(lastCharRef.current, Math.min(abs, textLen));
+        setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
+      }, 150);
+    };
+    // Personas with no photo (and so no --mouth-driven .ap-mouth overlay to
+    // follow the envelope, e.g. Daniel) fall back to the drawn SVG, whose
+    // mouth is a plain boolean prop — blink it like the Web Speech fallback
+    // does, or it just sits statically open for the whole line (SS-8).
+    // Photo personas keep the single setMouth(true): their mouth is
+    // actually driven by the amplitude loop above.
+    const startBlinkOrStaticMouth = () => {
+      if (simliFaceId) return;
+      if (svgMouthBlink) {
+        if (mouthTimer.current) clearInterval(mouthTimer.current);
+        mouthTimer.current = setInterval(() => setMouth((v) => !v), 220);
+      } else {
+        setMouth(true);
+      }
+    };
+
+    startMouthLoop();
 
     // Reuses the same stopSpeechRef mechanism pauseNarration()/stopAll()
     // already call for the Web Speech path — no changes needed there.
@@ -1097,15 +1153,31 @@ export function Classroom({
       el.pause();
       resolveDone();
     };
+    // True in-place pause/resume for pauseNarration(true)/resumeNarration()
+    // (the Play/Pause toggle specifically) — the same already-loaded <audio>
+    // element just pauses/resumes, same idea speakViaPrerenderedVideo
+    // already uses for Max's video. Consumed (nulled) once this line
+    // actually finishes below, or superseded by the next speakWithMouth()
+    // call (see its top).
+    quickPauseRef.current = () => {
+      stopMouthLoop();
+      if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
+      if (mouthTimer.current) { clearInterval(mouthTimer.current); mouthTimer.current = null; }
+      el.pause();
+    };
+    quickResumeRef.current = async () => {
+      try {
+        await el.play();
+      } catch {
+        return;
+      }
+      setSpeaking(true);
+      startMouthLoop();
+      startBlinkOrStaticMouth();
+      startProgressTimer();
+    };
 
-    if (driveBoard) {
-      progressTimerRef.current = setInterval(() => {
-        if (!el.duration) return;
-        const abs = charOffset + (el.currentTime / el.duration) * Math.max(0, textLen - charOffset);
-        lastCharRef.current = Math.max(lastCharRef.current, Math.min(abs, textLen));
-        setRevealed((r) => Math.max(r, revealedFromProgress(lastCharRef.current, textLen, nSteps)));
-      }, 150);
-    }
+    startProgressTimer();
 
     try {
       // The Web Audio context the element is routed through may still be
@@ -1121,20 +1193,7 @@ export function Classroom({
       // `speaking` itself turns true (SS-31) — see speakWithMouth.
       setSpeaking(true);
       if (photoOverlay) setAvatarConnecting(false);
-      if (!simliFaceId) {
-        // Personas with no photo (and so no --mouth-driven .ap-mouth overlay
-        // to follow the envelope, e.g. Daniel) fall back to the drawn SVG,
-        // whose mouth is a plain boolean prop — blink it like the Web Speech
-        // fallback does, or it just sits statically open for the whole line
-        // (SS-8). Photo personas keep the single setMouth(true): their mouth
-        // is actually driven by the amplitude loop above.
-        if (svgMouthBlink) {
-          if (mouthTimer.current) clearInterval(mouthTimer.current);
-          mouthTimer.current = setInterval(() => setMouth((v) => !v), 220);
-        } else {
-          setMouth(true);
-        }
-      }
+      startBlinkOrStaticMouth();
     } catch {
       // Autoplay blocked or similar — fall back to Web Speech for this line.
       if (showOverlay) setAvatarConnecting(false);
@@ -1143,11 +1202,15 @@ export function Classroom({
       if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
       el.removeEventListener('ended', onEnded);
       stopSpeechRef.current = null;
+      quickPauseRef.current = null;
+      quickResumeRef.current = null;
       URL.revokeObjectURL(objectUrl);
       return false;
     }
     await done;
     stopMouthLoop();
+    quickPauseRef.current = null;
+    quickResumeRef.current = null;
     URL.revokeObjectURL(objectUrl);
     finish();
     return true;
@@ -1157,6 +1220,10 @@ export function Classroom({
     onEnd, driveBoard, charOffset = 0, fullLen, segmentId, specialId,
   } = {}) {
     const myGen = ++speechGenRef.current;
+    // A fresh invocation always supersedes any previous line's quick-pause
+    // capability — resumeNarration() must never resume the WRONG line.
+    quickPauseRef.current = null;
+    quickResumeRef.current = null;
     // `speaking` itself is NOT raised here anymore (SS-31): it used to fire
     // before any of the three playback paths below had actually produced
     // sound, so a TTS fetch stuck on the 25-30s budget/timeout left the
@@ -1311,7 +1378,7 @@ export function Classroom({
         narrationCtxRef.current.resume().catch(() => {});
       }
     } catch { /* decode context is optional — never block playback on it */ }
-    if (speaking) { pauseNarration(); return; }
+    if (speaking) { pauseNarration(true); return; }
     if (paused) { resumeNarration(); return; }
     play();
   }
