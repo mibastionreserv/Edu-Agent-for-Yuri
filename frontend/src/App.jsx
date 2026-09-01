@@ -92,6 +92,17 @@ function prerenderedVideoUrl(avatarId, lang, moduleId, segmentId) {
   return `/content/avatar-videos/${avatarId}/${lang}/${moduleId}/${segmentId}.mp4`;
 }
 
+// Fixed, non-segment lines that also get a batch-generated clip: the
+// raise-hand prompt and the "picking the lesson back up" bridge phrase are
+// both constant per-language text from ui-strings (not generated per call
+// the way a Q&A answer is), so they can be pregenerated exactly like a
+// lesson segment. Lives outside course-content/avatar-videos/<avatar>/<lang>/
+// <moduleId>/ (which is keyed by real module ids) under a fixed "_special"
+// folder instead.
+function prerenderedSpecialVideoUrl(avatarId, lang, specialId) {
+  return `/content/avatar-videos/${avatarId}/${lang}/_special/${specialId}.mp4`;
+}
+
 // Personas backed by a live Tavus video avatar instead. Tavus's PAL for
 // Amara is pre-configured server-side in "echo" pipeline mode (see
 // backend/src/tavus.js) — Tavus's own TTS + Phoenix engine handle voice
@@ -1069,7 +1080,7 @@ export function Classroom({
   }
 
   async function speakWithMouth(text, {
-    onEnd, driveBoard, charOffset = 0, fullLen, segmentId,
+    onEnd, driveBoard, charOffset = 0, fullLen, segmentId, specialId,
   } = {}) {
     const myGen = ++speechGenRef.current;
     // `speaking` itself is NOT raised here anymore (SS-31): it used to fire
@@ -1103,17 +1114,19 @@ export function Classroom({
       if (onEnd && !wasInterrupted && myGen === speechGenRef.current) onEnd();
     };
 
-    // Max: try a batch-pregenerated clip first — only possible for an actual
-    // fixed lesson segment (segmentId is only ever passed from play(), never
-    // from Q&A/raise-hand call sites). Falls through to the normal
-    // server-TTS + photo path below when there's no clip yet.
-    if (usesPrerenderedVideo && segmentId) {
-      const handled = await speakViaPrerenderedVideo(
-        prerenderedVideoUrl(avatarId, lang, moduleId, segmentId),
-        {
-          textLen, driveBoard, nSteps, finish, myGen,
-        },
-      );
+    // Max: try a batch-pregenerated clip first — either an actual fixed
+    // lesson segment (segmentId, only ever passed from play()) or one of the
+    // fixed non-segment lines (specialId: the raise-hand prompt, the
+    // resume-after-question bridge — both constant per-language text, unlike
+    // a Q&A answer). Falls through to the normal server-TTS + photo path
+    // below when there's no clip yet for either.
+    if (usesPrerenderedVideo && (segmentId || specialId)) {
+      const url = specialId
+        ? prerenderedSpecialVideoUrl(avatarId, lang, specialId)
+        : prerenderedVideoUrl(avatarId, lang, moduleId, segmentId);
+      const handled = await speakViaPrerenderedVideo(url, {
+        textLen, driveBoard, nSteps, finish, myGen,
+      });
       if (handled) return;
       if (myGen !== speechGenRef.current) return; // superseded while we tried
     }
@@ -1234,7 +1247,7 @@ export function Classroom({
     if (handUp) { resume(); return; }
     pauseNarration(); setHandUp(true);
     setThread((t) => [...t, { role: 'presenter', text: ui.questionTitle }]);
-    if (ui.raiseHandPrompt) speakWithMouth(ui.raiseHandPrompt, { driveBoard: false });
+    if (ui.raiseHandPrompt) speakWithMouth(ui.raiseHandPrompt, { driveBoard: false, specialId: 'raise-hand-prompt' });
   }
   // Lowering the hand: the presenter acknowledges that the Q&A is over and
   // says she's picking the lesson back up, then narration continues from
@@ -1285,7 +1298,7 @@ export function Classroom({
     // Web Speech drops 'end' often enough (backgrounded tab, interrupted
     // utterance, some network voices) that the callback alone is not
     // dependable. continueLesson is idempotent, so both paths are safe.
-    speakWithMouth(bridge, { driveBoard: false, onEnd: continueLesson });
+    speakWithMouth(bridge, { driveBoard: false, onEnd: continueLesson, specialId: 'resume-after-question' });
     resumeTimerRef.current = setTimeout(() => { resumeTimerRef.current = null; continueLesson(); }, 12000);
   }
 
